@@ -53,9 +53,9 @@ func (c *marshallerImpl) putType(r *sch.ReferenceType) {
 	c.putMarshalType(r)
 	c.putMarshalFuncEnd(r)
 
-	/*c.putUnmarshalFuncBegin(r)
+	c.putUnmarshalFuncBegin(r)
 	c.putUnmarshalType(r)
-	c.putUnmarshalFuncEnd(r)*/
+	c.putUnmarshalFuncEnd(r)
 
 	switch t := r.Type.(type) {
 	case *sch.ReferenceType:

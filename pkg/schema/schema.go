@@ -128,11 +128,7 @@ func (s *Schema) Parse(path string) error {
 	if err != nil {
 		return err
 	}
-	err = s.parseSchema(ast)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.parseSchema(ast)
 }
 
 func (s *Schema) parseSchema(n *par.Node) error {

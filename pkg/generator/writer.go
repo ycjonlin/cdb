@@ -57,10 +57,6 @@ func (w *writer) putHexUint(u uint64) {
 	w.Write(strconv.AppendUint(nil, u, 16))
 }
 
-func (w *writer) putInt(i int64) {
-	w.Write(strconv.AppendInt(nil, i, 10))
-}
-
 func (w *writer) putNewline() {
 	w.Write(w.newline)
 }
