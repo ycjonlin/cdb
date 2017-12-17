@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"bitbucket.org/sethlin/cdb/pkg/generator"
-	"bitbucket.org/sethlin/cdb/pkg/schema"
+	"github.com/ycjonlin/cdb/pkg/generator"
+	"github.com/ycjonlin/cdb/pkg/schema"
 )
 
 func with(path string, callback func(*os.File)) {

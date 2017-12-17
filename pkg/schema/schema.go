@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strconv"
 
-	par "bitbucket.org/sethlin/cdb/pkg/parser"
+	par "github.com/ycjonlin/cdb/pkg/parser"
 )
 
 var (

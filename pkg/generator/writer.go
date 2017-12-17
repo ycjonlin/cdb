@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	sch "bitbucket.org/sethlin/cdb/pkg/schema"
+	sch "github.com/ycjonlin/cdb/pkg/schema"
 )
 
 type writer struct {

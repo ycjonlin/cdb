@@ -1,7 +1,7 @@
 package generator
 
 import (
-	sch "bitbucket.org/sethlin/cdb/pkg/schema"
+	sch "github.com/ycjonlin/cdb/pkg/schema"
 )
 
 type declarator interface {
