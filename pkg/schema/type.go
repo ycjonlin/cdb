@@ -114,7 +114,7 @@ func (r *ReferenceType) SetType(typ Type) error {
 // Match ...
 func (r *ReferenceType) Match(t Type) bool {
 	rp, ok := t.(*ReferenceType)
-	if !ok || r.Tag != rp.Tag {
+	if !ok || r != rp {
 		return false
 	}
 	return true
@@ -154,13 +154,18 @@ func NewCompositeType(r *ReferenceType, kind Kind) *CompositeType {
 // Match ...
 func (c *CompositeType) Match(t Type) bool {
 	cp, ok := t.(*CompositeType)
-	if !ok || c.IsAtomic != cp.IsAtomic || c.Kind != cp.Kind {
+	if !ok || c.IsAtomic != cp.IsAtomic || c.Kind != cp.Kind || len(c.Fields) != len(cp.Fields) {
 		return false
 	}
 	for _, f := range c.Fields {
 		fp := cp.GetByTag(f.Tag)
-		if fp == nil || !f.Type.Match(fp.Type) {
+		if fp == nil || f.Name != fp.Name {
 			return false
+		}
+		if c.Kind == UnionKind || c.Kind == StructKind {
+			if !f.Type.Match(fp.Type) {
+				return false
+			}
 		}
 	}
 	return true
@@ -217,11 +222,15 @@ func (c *ContainerType) Match(t Type) bool {
 	if !ok || c.IsAtomic != cp.IsAtomic || c.Kind != cp.Kind {
 		return false
 	}
-	if !c.Key.Match(cp.Key) {
-		return false
+	if c.Kind == MapKind || c.Kind == SetKind {
+		if !c.Key.Type.Match(cp.Key.Type) {
+			return false
+		}
 	}
-	if !c.Elem.Match(cp.Elem) {
-		return false
+	if c.Kind == ArrayKind || c.Kind == MapKind {
+		if !c.Elem.Type.Match(cp.Elem.Type) {
+			return false
+		}
 	}
 	return true
 }

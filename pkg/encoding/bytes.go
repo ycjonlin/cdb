@@ -16,12 +16,6 @@ var (
 	ErrSizeLimitExceeded = errors.New("size limit exceeded")
 )
 
-// Encoding ...
-type Encoding interface {
-	Encode(b *Bytes)
-	Decode(b *Bytes) error
-}
-
 // Bytes ...
 type Bytes []byte
 
