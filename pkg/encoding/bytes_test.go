@@ -360,6 +360,130 @@ func TestEncodeNonsortingBytes(t *testing.T) {
 	assert.Zero(t, stats.Mallocs)
 }
 
+func TestEncodeBool(t *testing.T) {
+	vs := []bool{false, true}
+	var stats Stats
+	bs := make(BytesList, len(vs))
+	for i, v := range vs {
+		b := make(Bytes, 0, 1)
+		vp, err := v, error(nil)
+		stats.Record(func() {
+			// encode
+			b.EncodeBool(v)
+			bs[i] = b
+			// decode
+			vp, err = b.DecodeBool()
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, v, vp)
+		assert.Empty(t, b)
+	}
+	// mem stats
+	assert.Zero(t, stats.Mallocs)
+	// order
+	assert.True(t, sort.IsSorted(bs))
+}
+
+func TestEncodeSortingString(t *testing.T) {
+	var vs []string
+	vs = append(vs, "")
+	j0, j1 := 0, 1
+	for i := 0; i < 4; i++ {
+		for j := j0; j < j1; j++ {
+			v := vs[j]
+			vs = append(vs, "\x00"+v, "\x01"+v)
+		}
+		j0, j1 = j1, len(vs)
+	}
+	sort.SliceStable(vs, func(i, j int) bool {
+		return vs[i] < vs[j]
+	})
+	var stats Stats
+	bs := make(BytesList, len(vs))
+	for i, v := range vs {
+		b := make(Bytes, 0, len(v)*2+2)
+		bp := make(Bytes, 0, len(v))
+		vp, err := "", error(nil)
+		stats.Record(func() {
+			// encode
+			b.EncodeSortingString(v)
+			bs[i] = b
+			// decode
+			vp, _, err = b.DecodeSortingString(bp)
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, v, vp)
+		assert.Empty(t, b)
+	}
+	// mem stats
+	assert.Zero(t, stats.Mallocs)
+	// order
+	assert.True(t, sort.IsSorted(bs))
+}
+
+func TestEncodeNonsortingString(t *testing.T) {
+	var vs []string
+	vs = append(vs, "")
+	j0, j1 := 0, 1
+	for i := 0; i < 4; i++ {
+		for j := j0; j < j1; j++ {
+			v := vs[j]
+			vs = append(vs, "\x00"+v, "\x01"+v)
+		}
+		j0, j1 = j1, len(vs)
+	}
+	sort.SliceStable(vs, func(i, j int) bool {
+		return vs[i] < vs[j]
+	})
+	var stats Stats
+	bs := make(BytesList, len(vs))
+	for i, v := range vs {
+		b := make(Bytes, 0, len(v)+2)
+		bp := make(Bytes, 0, len(v))
+		vp, err := "", error(nil)
+		stats.Record(func() {
+			// encode
+			b.EncodeNonsortingString(v)
+			bs[i] = b
+			// decode
+			vp, _, err = b.DecodeNonsortingString(bp)
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, v, vp)
+		assert.Empty(t, b)
+	}
+	// mem stats
+	assert.Zero(t, stats.Mallocs)
+}
+
+func TestEncodeSize(t *testing.T) {
+	vs := []int{}
+	for i := 0; i < 31; i++ {
+		v := int(1 << uint(i))
+		vs = append(vs, v)
+	}
+	var stats Stats
+	bs := make(BytesList, len(vs))
+	for i, v := range vs {
+		b := make(Bytes, 0, 9)
+		vp, err := v, error(nil)
+		stats.Record(func() {
+			// encode
+			b.EncodeSize(v)
+			bs[i] = b
+			// decode
+			vp, err = b.DecodeSize()
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, v, vp)
+		assert.Empty(t, b)
+	}
+	// mem stats
+	assert.Zero(t, stats.Mallocs)
+	// order
+	assert.True(t, sort.IsSorted(bs))
+}
+
 func TestMain(m *testing.M) {
 	var mem runtime.MemStats
 	for i := 0; i < 8; i++ {

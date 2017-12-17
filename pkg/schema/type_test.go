@@ -153,6 +153,10 @@ func Test_ContainerType_Match(t *testing.T) {
 	m.Key.SetType(p1)
 	m.Elem.SetType(p1)
 
+	a := NewContainerType(nil, ArrayKind)
+	a.Elem.SetType(p1)
+	assert.False(t, m.Match(a))
+
 	{
 		mp := NewContainerType(nil, MapKind)
 		mp.Key.SetType(p1)

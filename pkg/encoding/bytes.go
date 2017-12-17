@@ -2,7 +2,6 @@ package encoding
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"math"
 	"reflect"
@@ -18,11 +17,6 @@ var (
 
 // Bytes ...
 type Bytes []byte
-
-// String ...
-func (b *Bytes) String() string {
-	return hex.EncodeToString(*b)
-}
 
 // EncodeUint8 ...
 func (b *Bytes) EncodeUint8(v uint8) {
@@ -155,11 +149,6 @@ func (b *Bytes) EncodeFloat64(v float64) {
 		n = ^n
 	}
 	b.EncodeUint64(n)
-}
-
-// EncodeNBytes ...
-func (b *Bytes) EncodeNBytes(v []byte, n int) {
-	*b = append(*b, v[:n]...)
 }
 
 // EncodeSortingBytes ...
@@ -398,15 +387,15 @@ func (b *Bytes) DecodeBool() (bool, error) {
 }
 
 // DecodeSortingString ...
-func (b *Bytes) DecodeSortingString() (string, error) {
-	v, err := b.DecodeSortingBytes(nil)
-	return string(v), err
+func (b *Bytes) DecodeSortingString(v []byte) (string, []byte, error) {
+	v, err := b.DecodeSortingBytes(v)
+	return *(*string)(unsafe.Pointer(&v)), v, err
 }
 
 // DecodeNonsortingString ...
-func (b *Bytes) DecodeNonsortingString() (string, error) {
-	v, err := b.DecodeNonsortingBytes(nil)
-	return string(v), err
+func (b *Bytes) DecodeNonsortingString(v []byte) (string, []byte, error) {
+	v, err := b.DecodeNonsortingBytes(v)
+	return *(*string)(unsafe.Pointer(&v)), v, err
 }
 
 // DecodeSize ...
