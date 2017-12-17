@@ -10,6 +10,7 @@ import (
 	par "github.com/ycjonlin/cdb/pkg/parser"
 )
 
+// Err ...
 var (
 	ErrTODO          = errors.New("TODO")
 	ErrIllegalTag    = errors.New("illegal tag")
@@ -61,6 +62,7 @@ var parser = &par.Parser{
 	),
 }
 
+// Err ...
 var (
 	BoolType   = NewPrimitiveType("bool")
 	IntType    = NewPrimitiveType("int")

@@ -2,7 +2,7 @@ test: test/test.ps main
 	./main test test/test.ps
 	go run test/main/main.go
 
-main: main.go pkg/generator/* pkg/schema/*
+main: main.go pkg/*
 	go build main.go
 
 bench:

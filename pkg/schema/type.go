@@ -4,6 +4,7 @@ import (
 	"errors"
 )
 
+// Err ...
 var (
 	ErrZeroTypeTag            = errors.New("zero type tag")
 	ErrZeroTypeName           = errors.New("zero type name")
@@ -16,6 +17,7 @@ var (
 // Kind ...
 type Kind int
 
+// Kind ...
 const (
 	EnumKind     Kind = 1
 	BitfieldKind Kind = 2

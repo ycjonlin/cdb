@@ -9,6 +9,7 @@ import (
 	"unsafe"
 )
 
+// Err ...
 var (
 	ErrUnexpectedEOF     = errors.New("unexpected EOF")
 	ErrUnknownTag        = errors.New("unknown tag")

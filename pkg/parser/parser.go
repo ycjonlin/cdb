@@ -5,6 +5,7 @@ import (
 	"regexp"
 )
 
+// Err ...
 var (
 	ErrUnrecognizedVerb  = errors.New("parser: unrecognized verb")
 	ErrUnpairedBracket   = errors.New("parser: unpaired bracket")
@@ -158,9 +159,9 @@ func (c *cursor) node(segment string) *Node {
 func (c *cursor) advance(segment []byte) {
 	c.offset += len(segment)
 	for _, ch := range string(segment) {
-		c.charno += 1
+		c.charno++
 		if ch == '\n' {
-			c.lineno += 1
+			c.lineno++
 			c.charno = 0
 		}
 	}
