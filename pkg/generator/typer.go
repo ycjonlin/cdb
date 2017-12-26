@@ -229,21 +229,6 @@ func (c *typerImpl) putStructType(t *sch.CompositeType) {
 	c.putLine("}")
 }
 
-func (c *typerImpl) putStructFieldTypeDef(f *sch.ReferenceType) {
-	c.putString("uint64")
-}
-
-func (c *typerImpl) putStructFieldTypeRef(r *sch.ReferenceType) {
-	c.putCompoundName(r)
-	c.putString("_Flag")
-}
-
-func (c *typerImpl) putStructFieldTypeIns(r *sch.ReferenceType) {
-	c.putCompoundName(r.Super)
-	c.putString("_Flag_")
-	c.putName(r.Name)
-}
-
 func (c *typerImpl) putContainerType(t *sch.ContainerType) {
 	switch t.Kind {
 	case sch.ArrayKind:
