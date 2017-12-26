@@ -22,21 +22,10 @@ func WriteDeclaration(wr io.Writer, s *sch.Schema, newline, indent string) {
 	c.putSchema(s)
 }
 
-// WriteBytesMarshalling ...
-func WriteBytesMarshalling(wr io.Writer, s *sch.Schema, newline, indent string) {
+// WriteMarshalling ...
+func WriteMarshalling(wr io.Writer, s *sch.Schema, newline, indent string) {
 	w := writer{wr, []byte(newline), []byte(indent)}
-	var t typer = &typerImpl{&w}
-	var d marshallerDef = &bytesMarshaller{&w, t}
-	var c marshaller = &marshallerImpl{&w, t, d}
-	c.putSchema(s)
-}
-
-// WriteMapMarshalling ...
-func WriteMapMarshalling(wr io.Writer, s *sch.Schema, newline, indent string) {
-	w := writer{wr, []byte(newline), []byte(indent)}
-	var t typer = &typerImpl{&w}
-	var d marshallerDef = &mapMarshaller{&w, t}
-	var c marshaller = &marshallerImpl{&w, t, d}
+	var c marshaller = &marshallerImpl{&w, &typerImpl{&w}}
 	c.putSchema(s)
 }
 

@@ -13,6 +13,8 @@ type typer interface {
 	putConvertType(r *sch.ReferenceType, v string)
 	putUnionOptionTypeDef(f *sch.ReferenceType)
 	putUnionOptionTypeRef(f *sch.ReferenceType)
+	putStructFieldFlagType(f *sch.ReferenceType)
+	putStructFieldFlag(f *sch.ReferenceType)
 }
 
 type typerImpl struct {
@@ -59,7 +61,7 @@ func (c *typerImpl) putCompositeTypeZero(t *sch.CompositeType) {
 	case sch.EnumKind:
 		c.putString("0")
 	case sch.BitfieldKind:
-		c.putString("0")
+		c.putString("nil")
 	case sch.UnionKind:
 		c.putString("nil")
 	case sch.StructKind:
@@ -86,10 +88,11 @@ func (c *typerImpl) putTypeDef(r *sch.ReferenceType) {
 
 func (c *typerImpl) putTypeRef(r *sch.ReferenceType) {
 	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && ct.Kind == sch.StructKind {
+	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
 		c.putString("*")
 	}
-	switch t := r.Type.(type) {
+	c.putCompoundName(r)
+	/*switch r.Type.(type) {
 	case *sch.ReferenceType:
 		c.putCompoundName(r)
 	case *sch.PrimitiveType:
@@ -97,15 +100,16 @@ func (c *typerImpl) putTypeRef(r *sch.ReferenceType) {
 	case *sch.CompositeType:
 		c.putCompoundName(r)
 	case *sch.ContainerType:
-		c.putContainerType(t)
+		//c.putContainerType(t)
+		c.putCompoundName(r)
 	default:
 		panic("")
-	}
+	}*/
 }
 
 func (c *typerImpl) putConvertType(r *sch.ReferenceType, v string) {
 	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && ct.Kind == sch.StructKind {
+	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
 		c.putString("(")
 		c.putTypeRef(r)
 		c.putString(")")
@@ -115,20 +119,6 @@ func (c *typerImpl) putConvertType(r *sch.ReferenceType, v string) {
 	c.putString("(")
 	c.putString(v)
 	c.putString(")")
-}
-
-func (c *typerImpl) putUnionOptionTypeDef(f *sch.ReferenceType) {
-	c.putString("struct{ ")
-	c.putName(f.Name)
-	c.putString(" ")
-	c.putSubTypeRef(f)
-	c.putString(" }")
-}
-
-func (c *typerImpl) putUnionOptionTypeRef(r *sch.ReferenceType) {
-	c.putCompoundName(r.Super)
-	c.putString("_As_")
-	c.putName(r.Name)
 }
 
 func (c *typerImpl) putPrimitiveType(t *sch.PrimitiveType) {
@@ -171,7 +161,7 @@ func (c *typerImpl) putCompositeType(t *sch.CompositeType) {
 	case sch.EnumKind:
 		c.putString("uint32")
 	case sch.BitfieldKind:
-		c.putString("uint64")
+		c.putBitfieldType(t)
 	case sch.UnionKind:
 		c.putUnionType(t)
 	case sch.StructKind:
@@ -179,6 +169,12 @@ func (c *typerImpl) putCompositeType(t *sch.CompositeType) {
 	default:
 		panic("")
 	}
+}
+
+func (c *typerImpl) putBitfieldType(t *sch.CompositeType) {
+	c.putString("struct{ Del, Set ")
+	c.putStructFieldFlagType(t.Ref)
+	c.putString(" }")
 }
 
 func (c *typerImpl) putUnionType(t *sch.CompositeType) {
@@ -193,9 +189,36 @@ func (c *typerImpl) putUnionType(t *sch.CompositeType) {
 	c.putLine("}")
 }
 
+func (c *typerImpl) putUnionOptionTypeDef(f *sch.ReferenceType) {
+	c.putString("struct{ ")
+	c.putName(f.Name)
+	c.putString(" ")
+	c.putSubTypeRef(f)
+	c.putString(" }")
+}
+
+func (c *typerImpl) putUnionOptionTypeRef(r *sch.ReferenceType) {
+	c.putCompoundName(r.Super)
+	c.putString("_As_")
+	c.putName(r.Name)
+}
+
+func (c *typerImpl) putStructFieldFlagType(r *sch.ReferenceType) {
+	c.putCompoundName(r)
+	c.putString("_Flags")
+}
+
+func (c *typerImpl) putStructFieldFlag(f *sch.ReferenceType) {
+	c.putCompoundName(f)
+	c.putString("_Flag")
+}
+
 func (c *typerImpl) putStructType(t *sch.CompositeType) {
 	c.putString("struct {")
 	c.pushIndent()
+	c.putLine("Set, Del ")
+	c.putCompoundName(t.Ref)
+	c.putString("_Flags")
 	for _, f := range t.Fields {
 		c.putLine("")
 		c.putName(f.Name)
@@ -204,6 +227,21 @@ func (c *typerImpl) putStructType(t *sch.CompositeType) {
 	}
 	c.popIndent()
 	c.putLine("}")
+}
+
+func (c *typerImpl) putStructFieldTypeDef(f *sch.ReferenceType) {
+	c.putString("uint64")
+}
+
+func (c *typerImpl) putStructFieldTypeRef(r *sch.ReferenceType) {
+	c.putCompoundName(r)
+	c.putString("_Flag")
+}
+
+func (c *typerImpl) putStructFieldTypeIns(r *sch.ReferenceType) {
+	c.putCompoundName(r.Super)
+	c.putString("_Flag_")
+	c.putName(r.Name)
 }
 
 func (c *typerImpl) putContainerType(t *sch.ContainerType) {
@@ -251,7 +289,7 @@ func (c *typerImpl) putKeyTypeRef(r *sch.ReferenceType) {
 
 func (c *typerImpl) putSubTypeRef(r *sch.ReferenceType) {
 	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && ct.Kind == sch.StructKind {
+	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
 		c.putString("*")
 	}
 	switch t := r.Type.(type) {

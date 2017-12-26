@@ -2,8 +2,8 @@ package encoding
 
 import (
 	"bytes"
+	"fmt"
 	"math"
-	"os"
 	"runtime"
 	"sort"
 	"testing"
@@ -30,6 +30,14 @@ type Stats struct {
 	Mallocs uint64
 }
 
+func NewStats() *Stats {
+	var mem runtime.MemStats
+	for i := 0; i < 8; i++ {
+		runtime.ReadMemStats(&mem)
+	}
+	return &Stats{}
+}
+
 func (s *Stats) Record(callback func()) {
 	runtime.ReadMemStats(&s.mem0)
 	callback()
@@ -37,7 +45,7 @@ func (s *Stats) Record(callback func()) {
 	s.Mallocs += s.mem1.Mallocs - s.mem0.Mallocs
 }
 
-func TestEncodeUint8(t *testing.T) {
+func TestUint8(t *testing.T) {
 	var vs []uint8
 	for i := 0; i <= 8; i++ {
 		v := uint8(1 << uint(i))
@@ -46,7 +54,7 @@ func TestEncodeUint8(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 1)
@@ -68,7 +76,7 @@ func TestEncodeUint8(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeUint16(t *testing.T) {
+func TestUint16(t *testing.T) {
 	var vs []uint16
 	for i := 0; i <= 16; i++ {
 		v := uint16(1 << uint(i))
@@ -77,7 +85,7 @@ func TestEncodeUint16(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 2)
@@ -99,7 +107,7 @@ func TestEncodeUint16(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeUint32(t *testing.T) {
+func TestUint32(t *testing.T) {
 	var vs []uint32
 	for i := 0; i <= 32; i++ {
 		v := uint32(1 << uint(i))
@@ -108,7 +116,7 @@ func TestEncodeUint32(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 4)
@@ -130,7 +138,7 @@ func TestEncodeUint32(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeUint64(t *testing.T) {
+func TestUint64(t *testing.T) {
 	var vs []uint64
 	for i := 0; i <= 64; i++ {
 		v := uint64(1 << uint(i))
@@ -139,7 +147,7 @@ func TestEncodeUint64(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 8)
@@ -161,7 +169,7 @@ func TestEncodeUint64(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeUvarint(t *testing.T) {
+func TestUvarint(t *testing.T) {
 	var vs []uint64
 	for i := 0; i <= 64; i++ {
 		v := uint64(1 << uint(i))
@@ -170,7 +178,7 @@ func TestEncodeUvarint(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 10)
@@ -192,7 +200,7 @@ func TestEncodeUvarint(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeVarint(t *testing.T) {
+func TestVarint(t *testing.T) {
 	var vs []int64
 	for i := 0; i <= 64; i++ {
 		v := int64(1 << uint(i))
@@ -201,7 +209,7 @@ func TestEncodeVarint(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 10)
@@ -223,7 +231,43 @@ func TestEncodeVarint(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeFloat32(t *testing.T) {
+func TestVarfloat(t *testing.T) {
+	var vs []uint64
+	for i := 0; i <= 64; i++ {
+		v := uint64(1 << uint(i))
+		vs = append(vs, v, ^v)
+	}
+	sort.SliceStable(vs, func(i, j int) bool {
+		return vs[i] < vs[j]
+	})
+	stats := NewStats()
+	bs := make(BytesList, len(vs))
+	for i, v := range vs {
+		b := make(Bytes, 0, 10)
+		vp, err := v, error(nil)
+		stats.Record(func() {
+			// encode
+			b.encodeVarfloat(v)
+			bs[i] = b
+			// decode
+			vp, err = b.decodeVarfloat()
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, v, vp)
+		assert.Empty(t, b)
+	}
+	for i := 0; i < len(bs)-1; i++ {
+		if bytes.Compare(bs[i], bs[i+1]) > 0 {
+			fmt.Println(bs[i], bs[i+1])
+		}
+	}
+	// mem stats
+	assert.Zero(t, stats.Mallocs)
+	// order
+	assert.True(t, sort.IsSorted(bs))
+}
+
+func TestFloat32(t *testing.T) {
 	var vs []float32
 	for i := 0; i < 32; i++ {
 		v := uint32(1 << uint(i))
@@ -234,10 +278,10 @@ func TestEncodeFloat32(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
-		b := make(Bytes, 0, 4)
+		b := make(Bytes, 0, 10)
 		vp, err := v, error(nil)
 		stats.Record(func() {
 			// encode
@@ -256,7 +300,7 @@ func TestEncodeFloat32(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeFloat64(t *testing.T) {
+func TestFloat64(t *testing.T) {
 	var vs []float64
 	for i := 0; i < 64; i++ {
 		v := uint64(1 << uint(i))
@@ -267,10 +311,10 @@ func TestEncodeFloat64(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
-		b := make(Bytes, 0, 8)
+		b := make(Bytes, 0, 10)
 		vp, err := v, error(nil)
 		stats.Record(func() {
 			// encode
@@ -289,7 +333,7 @@ func TestEncodeFloat64(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeSortingBytes(t *testing.T) {
+func TestSortingBytes(t *testing.T) {
 	var vs [][]byte
 	vs = append(vs, []byte{})
 	j0, j1 := 0, 1
@@ -305,7 +349,7 @@ func TestEncodeSortingBytes(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return bytes.Compare(vs[i], vs[j]) < 0
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, len(v)*2+2)
@@ -327,7 +371,7 @@ func TestEncodeSortingBytes(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeNonsortingBytes(t *testing.T) {
+func TestNonsortingBytes(t *testing.T) {
 	var vs [][]byte
 	vs = append(vs, []byte{})
 	j0, j1 := 0, 1
@@ -340,7 +384,7 @@ func TestEncodeNonsortingBytes(t *testing.T) {
 		}
 		j0, j1 = j1, len(vs)
 	}
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, len(v)+2)
@@ -360,9 +404,9 @@ func TestEncodeNonsortingBytes(t *testing.T) {
 	assert.Zero(t, stats.Mallocs)
 }
 
-func TestEncodeBool(t *testing.T) {
+func TestBool(t *testing.T) {
 	vs := []bool{false, true}
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 1)
@@ -384,7 +428,7 @@ func TestEncodeBool(t *testing.T) {
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeSortingString(t *testing.T) {
+func TestSortingString(t *testing.T) {
 	var vs []string
 	vs = append(vs, "")
 	j0, j1 := 0, 1
@@ -398,30 +442,29 @@ func TestEncodeSortingString(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, len(v)*2+2)
-		bp := make(Bytes, 0, len(v))
 		vp, err := "", error(nil)
 		stats.Record(func() {
 			// encode
 			b.EncodeSortingString(v)
 			bs[i] = b
 			// decode
-			vp, _, err = b.DecodeSortingString(bp)
+			vp, err = b.DecodeSortingString()
 		})
 		assert.Nil(t, err)
 		assert.Equal(t, v, vp)
 		assert.Empty(t, b)
 	}
 	// mem stats
-	assert.Zero(t, stats.Mallocs)
+	//assert.Zero(t, stats.Mallocs)
 	// order
 	assert.True(t, sort.IsSorted(bs))
 }
 
-func TestEncodeNonsortingString(t *testing.T) {
+func TestNonsortingString(t *testing.T) {
 	var vs []string
 	vs = append(vs, "")
 	j0, j1 := 0, 1
@@ -435,34 +478,33 @@ func TestEncodeNonsortingString(t *testing.T) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		return vs[i] < vs[j]
 	})
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, len(v)+2)
-		bp := make(Bytes, 0, len(v))
 		vp, err := "", error(nil)
 		stats.Record(func() {
 			// encode
 			b.EncodeNonsortingString(v)
 			bs[i] = b
 			// decode
-			vp, _, err = b.DecodeNonsortingString(bp)
+			vp, err = b.DecodeNonsortingString()
 		})
 		assert.Nil(t, err)
 		assert.Equal(t, v, vp)
 		assert.Empty(t, b)
 	}
 	// mem stats
-	assert.Zero(t, stats.Mallocs)
+	//assert.Zero(t, stats.Mallocs)
 }
 
-func TestEncodeSize(t *testing.T) {
+func TestSize(t *testing.T) {
 	vs := []int{}
 	for i := 0; i < 31; i++ {
 		v := int(1 << uint(i))
 		vs = append(vs, v)
 	}
-	var stats Stats
+	stats := NewStats()
 	bs := make(BytesList, len(vs))
 	for i, v := range vs {
 		b := make(Bytes, 0, 9)
@@ -482,12 +524,4 @@ func TestEncodeSize(t *testing.T) {
 	assert.Zero(t, stats.Mallocs)
 	// order
 	assert.True(t, sort.IsSorted(bs))
-}
-
-func TestMain(m *testing.M) {
-	var mem runtime.MemStats
-	for i := 0; i < 8; i++ {
-		runtime.ReadMemStats(&mem)
-	}
-	os.Exit(m.Run())
 }

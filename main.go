@@ -24,10 +24,7 @@ func main() {
 	with(path+".decl.go", func(f *os.File) {
 		generator.WriteDeclaration(f, s, "\n", "  ")
 	})
-	with(path+".marsh.bytes.go", func(f *os.File) {
-		generator.WriteBytesMarshalling(f, s, "\n", "  ")
-	})
-	with(path+".marsh.map.go", func(f *os.File) {
-		generator.WriteMapMarshalling(f, s, "\n", "  ")
+	with(path+".marsh.go", func(f *os.File) {
+		generator.WriteMarshalling(f, s, "\n", "  ")
 	})
 }

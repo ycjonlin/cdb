@@ -68,8 +68,8 @@ var (
 	IntType    = NewPrimitiveType("int")
 	UintType   = NewPrimitiveType("uint")
 	FloatType  = NewPrimitiveType("float")
-	BytesType  = NewPrimitiveType("bytes")
 	StringType = NewPrimitiveType("string")
+	BytesType  = NewPrimitiveType("bytes")
 
 	BuiltInTypes = map[Name]Type{
 		"bool":      BoolType,

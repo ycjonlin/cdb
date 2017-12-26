@@ -88,13 +88,17 @@ func (c *declaratorImpl) putEnumType(t *sch.CompositeType) {
 
 func (c *declaratorImpl) putBitfieldType(t *sch.CompositeType) {
 	// Options
+	c.putLine("type ")
+	c.typer.putStructFieldFlagType(t.Ref)
+	c.putString(" uint64")
+	c.putLine("")
 	c.putLine("const (")
 	c.pushIndent()
 	for i, f := range t.Fields {
 		c.putLine("")
-		c.putCompoundName(f)
+		c.typer.putStructFieldFlag(f)
 		c.putString(" ")
-		c.putCompoundName(f.Super)
+		c.typer.putStructFieldFlagType(f.Super)
 		c.putString(" = 0x")
 		c.putHexUint(1 << uint(i))
 	}
@@ -122,7 +126,10 @@ func (c *declaratorImpl) putUnionType(t *sch.CompositeType) {
 	c.putLine("")
 }
 
-func (c *declaratorImpl) putStructType(t *sch.CompositeType) {}
+func (c *declaratorImpl) putStructType(t *sch.CompositeType) {
+	// Options
+	c.putBitfieldType(t)
+}
 
 func (c *declaratorImpl) putContainerType(t *sch.ContainerType) {
 	switch t.Kind {
