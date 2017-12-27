@@ -12,8 +12,13 @@ var (
 
 // Data ...
 type Data interface {
+	String() string
+
 	SetKey() *Bytes
 	GetKey() *Bytes
+
+	SetFlags(set, del bool)
+	GetFlags() (set, del bool, err error)
 
 	Value() *Bytes
 	Len() *Bytes
@@ -40,6 +45,27 @@ func (b *BytesData) SetKey() *Bytes { return (*Bytes)(b) }
 // GetKey ...
 func (b *BytesData) GetKey() *Bytes { return (*Bytes)(b) }
 
+// SetFlags ...
+func (b *BytesData) SetFlags(set, del bool) {
+	var u uint64
+	if set {
+		u |= 0x1
+	}
+	if del {
+		u |= 0x2
+	}
+	(*Bytes)(b).EncodeUvarint(u)
+}
+
+// GetFlags ...
+func (b *BytesData) GetFlags() (set, del bool, err error) {
+	u, err := (*Bytes)(b).DecodeUvarint()
+	if err != nil {
+		return false, false, err
+	}
+	return u&0x1 != 0, u&0x2 != 0, nil
+}
+
 // Value ...
 func (b *BytesData) Value() *Bytes { return (*Bytes)(b) }
 
@@ -55,7 +81,10 @@ func (b *BytesData) Next() bool { return true }
 // Data ...
 func (*BytesData) Data(b *Bytes) Data { return (*BytesData)(b) }
 
-type pair struct{ key, value Bytes }
+type pair struct {
+	set, del   bool
+	key, value Bytes
+}
 
 func (p *pair) String() string {
 	return p.key.String() + ":" + p.value.String()
@@ -114,7 +143,7 @@ func (m *MapData) SetKey() *Bytes {
 	if len(m.path) > 0 {
 		k = append(k, m.path[len(m.path)-1].key...)
 	}
-	m.pairs = append(m.pairs, pair{k, nil})
+	m.pairs = append(m.pairs, pair{key: k})
 	p := &m.pairs[len(m.pairs)-1]
 	m.path = append(m.path, p)
 	m.keys = append(m.keys, nil)
@@ -133,6 +162,19 @@ func (m *MapData) GetKey() *Bytes {
 	m.keys = append(m.keys, p.key)
 	p.key = p.key[len(k):]
 	return &p.key
+}
+
+// SetFlags ...
+func (m *MapData) SetFlags(set, del bool) {
+	p := m.path[len(m.path)-1]
+	p.set = set
+	p.del = del
+}
+
+// GetFlags ...
+func (m *MapData) GetFlags() (set, del bool, err error) {
+	p := m.path[len(m.path)-1]
+	return p.set, p.del, nil
 }
 
 // Value ...
@@ -198,6 +240,19 @@ func (t *TreeData) GetKey() *Bytes {
 	n.nodes = n.nodes[1:]
 	t.path = append(t.path, np)
 	return &np.key
+}
+
+// SetFlags ...
+func (t *TreeData) SetFlags(set, del bool) {
+	n := t.path[len(t.path)-1]
+	n.set = set
+	n.del = del
+}
+
+// GetFlags ...
+func (t *TreeData) GetFlags() (set, del bool, err error) {
+	n := t.path[len(t.path)-1]
+	return n.set, n.del, nil
 }
 
 // Value ...

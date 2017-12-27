@@ -10,7 +10,7 @@ type marshaller interface {
 
 type marshallerImpl struct {
 	*writer
-	typer typer
+	typer
 }
 
 func (c *marshallerImpl) putSchema(s *sch.Schema) {
@@ -146,7 +146,7 @@ func (c *marshallerImpl) putMarshalSubType(r *sch.ReferenceType, e, v string) {
 	}
 }
 
-func (c *marshallerImpl) putUnmarshalSubType(r *sch.ReferenceType, e, v string) {
+func (c *marshallerImpl) putUnmarshalSubType(t sch.Type, r *sch.ReferenceType, e, v string) {
 	switch t := r.Type.(type) {
 	case *sch.ReferenceType:
 		c.putUnmarshalReferenceType(t, e, v)
@@ -159,16 +159,17 @@ func (c *marshallerImpl) putUnmarshalSubType(r *sch.ReferenceType, e, v string) 
 	default:
 		panic("")
 	}
+	c.putUnmarshalFuncReturnErr(t)
 }
 
-func (c *marshallerImpl) putMarshalKeyType(r *sch.ReferenceType, v string) {
+func (c *marshallerImpl) putMarshalKeyType(r *sch.ReferenceType) {
 	c.putLine("dk := d.Data(d.SetKey())")
-	c.putMarshalSubType(r, "dk", v)
+	c.putMarshalSubType(r, "dk", "k")
 }
 
-func (c *marshallerImpl) putUnmarshalKeyType(r *sch.ReferenceType, v string) {
+func (c *marshallerImpl) putUnmarshalKeyType(t sch.Type, r *sch.ReferenceType) {
 	c.putLine("dk := d.Data(d.GetKey())")
-	c.putUnmarshalSubType(r, "dk", v)
+	c.putUnmarshalSubType(t, r, "dk", "k")
 }
 
 func (c *marshallerImpl) putMarshalReferenceType(t *sch.ReferenceType, e, v string) {
@@ -177,7 +178,7 @@ func (c *marshallerImpl) putMarshalReferenceType(t *sch.ReferenceType, e, v stri
 	c.putString("(")
 	c.putString(e)
 	c.putString(", ")
-	c.typer.putConvertType(t, v)
+	c.putConvertType(t, v)
 	c.putString(")")
 	c.putMarshalFuncReturnErr()
 }
@@ -268,275 +269,103 @@ func (c *marshallerImpl) putUnmarshalCompositeType(t *sch.CompositeType) {
 }
 
 func (c *marshallerImpl) putMarshalEnumType(t *sch.CompositeType) {
-	c.putLine("switch v {")
+	c.putMarshalFieldOneSwitchBegin(t)
 	for _, f := range t.Fields {
-		c.putLine("case ")
-		c.putCompoundName(f)
-		c.putString(":")
-		{
-			c.pushIndent()
-			c.putMarshalTag(f, true)
-			c.putMarshalEmpty()
-			c.popIndent()
-		}
+		c.putMarshalFieldOneSwitchCase(t, f)
+		c.putMarshalEmpty()
 	}
-	c.putMarshalFuncSwitchDefault(t)
-	c.putLine("}")
-	c.putMarshalEmpty()
-	c.putLine("return nil")
+	c.putMarshalFieldOneSwitchEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalEnumType(t *sch.CompositeType) {
-	c.putLine("var v ")
-	c.putCompoundName(t.Ref)
-	c.putUnmarshalTag(t, "t", true)
-	c.putLine("switch t {")
+	c.putUnmarshalFieldOneSwitchBegin(t)
 	for _, f := range t.Fields {
-		c.putUnmarshalFuncSwitchCase(f)
-		{
-			c.pushIndent()
-			c.putUnmarshalEmpty()
-			c.putLine("v = ")
-			c.putCompoundName(f)
-			c.popIndent()
-		}
+		c.putUnmarshalFieldOneSwitchCase(f)
+		c.putUnmarshalEmpty()
+		c.putLine("v = ")
+		c.putCompoundName(f)
 	}
-	c.putUnmarshalFuncSwitchDefault(t)
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
-}
-
-func (c *marshallerImpl) putMarshalBitfieldType(t *sch.CompositeType) {
-	c.putLine("if v == nil {")
-	{
-		c.pushIndent()
-		c.putLine("goto end")
-		c.popIndent()
-	}
-	c.putLine("}")
-	for _, f := range t.Fields {
-		c.putLine("if set, del := v.Set&")
-		c.typer.putStructFieldFlag(f)
-		c.putString(" != 0,")
-		{
-			c.pushIndent()
-			c.putLine("v.Del&")
-			c.typer.putStructFieldFlag(f)
-			c.putString(" != 0; set || del {")
-			c.putMarshalTag(f, false)
-			c.putMarshalEmpty()
-			c.popIndent()
-		}
-		c.putLine("}")
-	}
-	{
-		c.popIndent()
-		c.putLine("end:")
-		c.pushIndent()
-	}
-	c.putMarshalEnd()
-	c.putMarshalEmpty()
-	c.putLine("return nil")
-}
-
-func (c *marshallerImpl) putUnmarshalBitfieldType(t *sch.CompositeType) {
-	c.putLine("v := &")
-	c.putCompoundName(t.Ref)
-	c.putString("{}")
-	c.putLine("for d.Next() {")
-	{
-		c.pushIndent()
-		c.putUnmarshalTag(t, "t", false)
-		c.putLine("switch t {")
-		for _, f := range t.Fields {
-			c.putUnmarshalFuncSwitchCase(f)
-			{
-				c.pushIndent()
-				c.putLine("if set {")
-				{
-					c.pushIndent()
-					c.putLine("v.Set |= ")
-					c.typer.putStructFieldFlag(f)
-					c.popIndent()
-				}
-				c.putLine("}")
-				c.putLine("if del {")
-				{
-					c.pushIndent()
-					c.putLine("v.Del |= ")
-					c.typer.putStructFieldFlag(f)
-					c.popIndent()
-				}
-				c.putLine("}")
-				c.putUnmarshalEmpty()
-				c.popIndent()
-			}
-		}
-		c.putUnmarshalFuncSwitchDefault(t)
-		c.putLine("}")
-		c.putLine("if t == 0 {")
-		{
-			c.pushIndent()
-			c.putLine("break")
-			c.popIndent()
-		}
-		c.putLine("}")
-		c.popIndent()
-	}
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
+	c.putUnmarshalFieldOneSwitchEnd(t)
 }
 
 func (c *marshallerImpl) putMarshalUnionType(t *sch.CompositeType) {
-	c.putLine("switch v := v.(type) {")
+	c.putMarshalFieldOneSwitchBegin(t)
 	for _, f := range t.Fields {
-		c.putLine("case *")
-		c.typer.putUnionOptionTypeRef(f)
-		c.putString(":")
-		{
-			c.pushIndent()
-			c.putMarshalTag(f, true)
-			c.putLine("f := v.")
-			c.putName(f.Name)
-			c.putMarshalSubType(f, "d", "f")
-			c.popIndent()
-		}
+		c.putMarshalFieldOneSwitchCase(t, f)
+		c.putLine("f := v.")
+		c.putName(f.Name)
+		c.putMarshalSubType(f, "d", "f")
 	}
-	c.putMarshalFuncSwitchDefault(t)
-	c.putLine("}")
-	c.putMarshalEmpty()
-	c.putLine("return nil")
+	c.putMarshalFieldOneSwitchEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalUnionType(t *sch.CompositeType) {
-	c.putLine("var v ")
-	c.putCompoundName(t.Ref)
-	c.putUnmarshalTag(t, "t", true)
-	c.putLine("switch t {")
+	c.putUnmarshalFieldOneSwitchBegin(t)
 	for _, f := range t.Fields {
-		c.putUnmarshalFuncSwitchCase(f)
-		{
-			c.pushIndent()
-			c.putUnmarshalSubType(f, "d", "f")
-			c.putUnmarshalFuncReturnErr(t)
-			c.putLine("v = &")
-			c.typer.putUnionOptionTypeRef(f)
-			c.putString("{f}")
-			c.popIndent()
-		}
+		c.putUnmarshalFieldOneSwitchCase(f)
+		c.putUnmarshalSubType(t, f, "d", "f")
+		c.putLine("v = &")
+		c.putUnionOptionTypeRef(f)
+		c.putString("{f}")
 	}
-	c.putUnmarshalFuncSwitchDefault(t)
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
+	c.putUnmarshalFieldOneSwitchEnd(t)
+}
+
+func (c *marshallerImpl) putMarshalBitfieldType(t *sch.CompositeType) {
+	c.putMarshalFieldManySwitchBegin(t)
+	for i, f := range t.Fields {
+		c.putMarshalFieldManySwitchCase(f, i)
+		c.putMarshalEmpty()
+	}
+	c.putMarshalFieldManySwitchEnd(t)
+}
+
+func (c *marshallerImpl) putUnmarshalBitfieldType(t *sch.CompositeType) {
+	c.putUnmarshalFieldManySwitchBegin(t)
+	for i, f := range t.Fields {
+		c.putUnmarshalFieldManySwitchCase(f, i)
+		c.putUnmarshalEmpty()
+	}
+	c.putUnmarshalFieldManySwitchEnd(t)
 }
 
 func (c *marshallerImpl) putMarshalStructType(t *sch.CompositeType) {
-	c.putLine("if v == nil {")
-	{
-		c.pushIndent()
-		c.putLine("goto end")
-		c.popIndent()
-	}
-	c.putLine("}")
-	for _, f := range t.Fields {
-		c.putLine("if set, del := v.Set&")
-		c.typer.putStructFieldFlag(f)
-		c.putString(" != 0,")
+	c.putMarshalFieldManySwitchBegin(t)
+	for i, f := range t.Fields {
+		c.putMarshalFieldManySwitchCase(f, i)
+		c.pushIndent("if set {")
 		{
-			c.pushIndent()
-			c.putLine("v.Del&")
-			c.typer.putStructFieldFlag(f)
-			c.putString(" != 0; set || del {")
-			c.putMarshalTag(f, false)
-			c.putLine("if set {")
-			{
-				c.pushIndent()
-				c.putLine("f := v.")
-				c.putName(f.Name)
-				c.putMarshalSubType(f, "d", "f")
-				c.popIndent()
-			}
-			c.putLine("} else {")
-			{
-				c.pushIndent()
-				c.putMarshalEmpty()
-				c.popIndent()
-			}
-			c.putLine("}")
-			c.popIndent()
+			c.putLine("f := v.")
+			c.putName(f.Name)
+			c.putMarshalSubType(f, "d", "f")
 		}
-		c.putLine("}")
+		c.nextIndent("} else {")
+		{
+			c.putMarshalEmpty()
+		}
+		c.popIndent("}")
 	}
-	{
-		c.popIndent()
-		c.putLine("end:")
-		c.pushIndent()
-	}
-	c.putMarshalEnd()
-	c.putMarshalEmpty()
-	c.putLine("return nil")
+	c.putMarshalFieldManySwitchEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalStructType(t *sch.CompositeType) {
-	c.putLine("v := &")
-	c.putCompoundName(t.Ref)
-	c.putString("{}")
-	c.putLine("for d.Next() {")
-	{
-		c.pushIndent()
-		c.putUnmarshalTag(t, "t", false)
-		c.putLine("switch t {")
-		for _, f := range t.Fields {
-			c.putUnmarshalFuncSwitchCase(f)
-			{
-				c.pushIndent()
-				c.putLine("if set {")
-				{
-					c.pushIndent()
-					c.putLine("v.Set |= ")
-					c.typer.putStructFieldFlag(f)
-					c.putUnmarshalSubType(f, "d", "f")
-					c.putUnmarshalFuncReturnErr(t)
-					c.putLine("v.")
-					c.putName(f.Name)
-					c.putString(" = f")
-					c.popIndent()
-				}
-				c.putLine("} else {")
-				{
-					c.pushIndent()
-					c.putUnmarshalEmpty()
-					c.popIndent()
-				}
-				c.putLine("}")
-				c.putLine("if del {")
-				{
-					c.pushIndent()
-					c.putLine("v.Del |= ")
-					c.typer.putStructFieldFlag(f)
-					c.popIndent()
-				}
-				c.putLine("}")
-				c.popIndent()
-			}
-		}
-		c.putUnmarshalFuncSwitchDefault(t)
-		c.putLine("}")
-		c.putLine("if t == 0 {")
+	c.putUnmarshalFieldManySwitchBegin(t)
+	for i, f := range t.Fields {
+		c.putUnmarshalFieldManySwitchCase(f, i)
+		c.pushIndent("if set {")
 		{
-			c.pushIndent()
-			c.putLine("break")
-			c.popIndent()
+			c.putUnmarshalSubType(t, f, "d", "f")
+			c.putLine("v.")
+			c.putName(f.Name)
+			c.putString(" = f")
 		}
-		c.putLine("}")
-		c.popIndent()
+		c.nextIndent("} else {")
+		{
+			c.putUnmarshalEmpty()
+		}
+		c.popIndent("}")
 	}
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
+	c.putUnmarshalFieldManySwitchEnd(t)
 }
 
 func (c *marshallerImpl) putMarshalContainerType(t *sch.ContainerType) {
@@ -566,108 +395,106 @@ func (c *marshallerImpl) putUnmarshalContainerType(t *sch.ContainerType) {
 }
 
 func (c *marshallerImpl) putMarshalArrayType(t *sch.ContainerType) {
-	c.putMarshalSize("v")
-	c.putLine("for k, e := range v {")
+	c.putMarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putMarshalIndex("k")
+		c.putLine("d.SetKey().EncodeSize(k)")
 		c.putMarshalSubType(t.Elem, "d", "e")
-		c.popIndent()
 	}
-	c.putLine("}")
-	c.putMarshalEnd()
-	c.putMarshalEmpty()
+	c.putMarshalContainerEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalArrayType(t *sch.ContainerType) {
-	c.putUnmarshalSize(t, "n")
-	c.putLine("var v []")
-	c.typer.putSubTypeRef(t.Elem)
-	c.putLine("for i := 0; i < n && d.Next(); i++ {")
+	c.putUnmarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putUnmarshalIndex(t, "k")
-		c.putUnmarshalSubType(t.Elem, "d", "e")
+		c.putLine("k, err := d.GetKey().DecodeSize()")
 		c.putUnmarshalFuncReturnErr(t)
-		c.putLine("for cap(v) <= k {")
+		c.putUnmarshalSubType(t, t.Elem, "d", "e")
+		c.pushIndent("for cap(v) <= k {")
 		{
-			c.pushIndent()
 			c.putLine("v = append(v, ")
-			c.typer.putZero(t.Elem)
+			c.putZero(t.Elem)
 			c.putString(")")
-			c.popIndent()
 		}
-		c.putLine("}")
+		c.popIndent("}")
 		c.putLine("v = v[:k+1]")
 		c.putLine("v[k] = e")
-		c.popIndent()
 	}
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
+	c.putUnmarshalContainerEnd(t)
 }
 
 func (c *marshallerImpl) putMarshalMapType(t *sch.ContainerType) {
-	c.putMarshalSize("v")
-	c.putLine("for k, e := range v {")
+	c.putMarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putMarshalKeyType(t.Key, "k")
+		c.putMarshalKeyType(t.Key)
 		c.putMarshalSubType(t.Elem, "d", "e")
-		c.popIndent()
 	}
-	c.putLine("}")
-	c.putMarshalEmpty()
+	c.putMarshalContainerEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalMapType(t *sch.ContainerType) {
-	c.putUnmarshalSize(t, "n")
-	c.putLine("v := ")
-	c.typer.putTypeRef(t.Ref)
-	c.putString("{}")
-	c.putLine("for i := 0; i < n && d.Next(); i++ {")
+	c.putUnmarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putUnmarshalKeyType(t.Key, "k")
-		c.putUnmarshalFuncReturnErr(t)
-		c.putUnmarshalSubType(t.Elem, "d", "e")
-		c.putUnmarshalFuncReturnErr(t)
+		c.putUnmarshalKeyType(t, t.Key)
+		c.putUnmarshalSubType(t, t.Elem, "d", "e")
 		c.putLine("v[k] = e")
-		c.popIndent()
 	}
-	c.putLine("}")
-	c.putUnmarshalEmpty()
-	c.putLine("return v, nil")
+	c.putUnmarshalContainerEnd(t)
 }
 
 func (c *marshallerImpl) putMarshalSetType(t *sch.ContainerType) {
-	c.putMarshalSize("v")
-	c.putLine("for k, _ := range v {")
+	c.putMarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putMarshalKeyType(t.Key, "k")
+		c.putMarshalKeyType(t.Key)
 		c.putMarshalEmpty()
-		c.popIndent()
 	}
-	c.putLine("}")
-	c.putMarshalEmpty()
+	c.putMarshalContainerEnd(t)
 }
 
 func (c *marshallerImpl) putUnmarshalSetType(t *sch.ContainerType) {
-	c.putUnmarshalSize(t, "n")
-	c.putLine("v := ")
-	c.typer.putTypeRef(t.Ref)
-	c.putString("{}")
-	c.putLine("for i := 0; i < n && d.Next(); i++ {")
+	c.putUnmarshalContainerBegin(t)
 	{
-		c.pushIndent()
-		c.putUnmarshalKeyType(t.Key, "k")
-		c.putUnmarshalFuncReturnErr(t)
+		c.putUnmarshalKeyType(t, t.Key)
 		c.putUnmarshalEmpty()
 		c.putLine("v[k] = struct{}{}")
-		c.popIndent()
 	}
-	c.putLine("}")
+	c.putUnmarshalContainerEnd(t)
+}
+
+func (c *marshallerImpl) putMarshalContainerBegin(t *sch.ContainerType) {
+	c.pushIndent("if b := d.Len(); b != nil {")
+	{
+		c.putLine("b.EncodeSize(len(v))")
+	}
+	c.popIndent("}")
+	c.pushIndent("for k")
+	if t.Kind != sch.SetKind {
+		c.putString(", e")
+	}
+	c.putString(" := range v {")
+}
+
+func (c *marshallerImpl) putMarshalContainerEnd(t *sch.ContainerType) {
+	c.popIndent("}")
+	c.putMarshalEmpty()
+}
+
+func (c *marshallerImpl) putUnmarshalContainerBegin(t *sch.ContainerType) {
+	c.putLine("n := enc.MaxSize")
+	c.pushIndent("if b := d.Len(); b != nil {")
+	{
+		c.putLine("var err error")
+		c.putLine("n, err = b.DecodeSize()")
+		c.putUnmarshalFuncReturnErr(t)
+	}
+	c.popIndent("}")
+	c.putLine("v := ")
+	c.putTypeRef(t.Ref)
+	c.putString("{}")
+	c.pushIndent("for i := 0; i < n && d.Next(); i++ {")
+}
+
+func (c *marshallerImpl) putUnmarshalContainerEnd(t *sch.ContainerType) {
+	c.popIndent("}")
 	c.putUnmarshalEmpty()
 	c.putLine("return v, nil")
 }
@@ -675,29 +502,26 @@ func (c *marshallerImpl) putUnmarshalSetType(t *sch.ContainerType) {
 // Snippets
 
 func (c *marshallerImpl) putMarshalFuncBegin(t *sch.ReferenceType) {
-	c.putLine("func (m *Marshaller) Marshal")
+	c.pushIndent("func (m *Marshaller) Marshal")
 	c.putCompoundName(t)
 	c.putString("(d enc.Data, v ")
-	c.typer.putTypeRef(t)
+	c.putTypeRef(t)
 	c.putString(") (err error) {")
-	c.pushIndent()
 }
 
 func (c *marshallerImpl) putUnmarshalFuncBegin(t *sch.ReferenceType) {
-	c.putLine("func (m *Marshaller) Unmarshal")
+	c.pushIndent("func (m *Marshaller) Unmarshal")
 	c.putCompoundName(t)
 	c.putString("(d enc.Data) (")
-	c.typer.putTypeRef(t)
+	c.putTypeRef(t)
 	c.putString(", error) {")
-	c.pushIndent()
 }
 
 func (c *marshallerImpl) putMarshalFuncEnd(t *sch.ReferenceType) {
 	if _, ok := t.Type.(*sch.CompositeType); !ok {
 		c.putLine("return nil")
 	}
-	c.popIndent()
-	c.putLine("}")
+	c.popIndent("}")
 	c.putLine("")
 }
 
@@ -705,107 +529,208 @@ func (c *marshallerImpl) putUnmarshalFuncEnd(t *sch.ReferenceType) {
 	switch t.Type.(type) {
 	case *sch.ReferenceType, *sch.PrimitiveType:
 		c.putLine("return (")
-		c.typer.putTypeRef(t)
+		c.putTypeRef(t)
 		c.putString(")(v), err")
 	}
-	c.popIndent()
-	c.putLine("}")
+	c.popIndent("}")
 	c.putLine("")
 }
 
 func (c *marshallerImpl) putMarshalFuncReturnErr() {
-	c.putLine("if err != nil {")
+	c.pushIndent("if err != nil {")
 	{
-		c.pushIndent()
 		c.putLine("return err")
-		c.popIndent()
 	}
-	c.putLine("}")
+	c.popIndent("}")
 }
 
 func (c *marshallerImpl) putUnmarshalFuncReturnErr(t sch.Type) {
-	c.putLine("if err != nil {")
+	c.pushIndent("if err != nil {")
 	{
-		c.pushIndent()
 		c.putLine("return ")
-		c.typer.putZero(t)
+		c.putZero(t)
 		c.putString(", err")
-		c.popIndent()
 	}
-	c.putLine("}")
+	c.popIndent("}")
 }
 
-// func (c *marshallerImpl) putMarshalFuncSwitchCase(f *sch.ReferenceType) {}
+func (c *marshallerImpl) putMarshalFieldOneSwitchBegin(t *sch.CompositeType) {
+	c.pushIndent("switch v ")
+	if t.Kind == sch.UnionKind {
+		c.putString(":= v.(type) ")
+	}
+	c.putString("{")
+}
 
-func (c *marshallerImpl) putUnmarshalFuncSwitchCase(f *sch.ReferenceType) {
-	c.putLine("case ")
+func (c *marshallerImpl) putMarshalFieldOneSwitchCase(t *sch.CompositeType, f *sch.ReferenceType) {
+	c.nextIndent("case ")
+	if t.Kind == sch.UnionKind {
+		c.putString("*")
+		c.putUnionOptionTypeRef(f)
+	} else {
+		c.putCompoundName(f)
+	}
+	c.putString(":")
+	{
+		c.putMarshalTag(f)
+	}
+}
+
+func (c *marshallerImpl) putMarshalFieldOneSwitchEnd(t *sch.CompositeType) {
+	c.nextIndent("case ")
+	c.putZero(t)
+	c.putString(":")
+	{
+		c.putMarshalTag(nil)
+		c.putMarshalEmpty()
+	}
+	c.nextIndent("default:")
+	{
+		c.putLine("return enc.ErrUnknownTag")
+	}
+	c.popIndent("}")
+	c.putMarshalEmpty()
+	c.putLine("return nil")
+}
+
+func (c *marshallerImpl) putUnmarshalFieldOneSwitchBegin(t *sch.CompositeType) {
+	c.putLine("var v ")
+	c.putCompoundName(t.Ref)
+	c.putUnmarshalTag(t)
+	c.pushIndent("switch t {")
+}
+
+func (c *marshallerImpl) putUnmarshalFieldOneSwitchCase(f *sch.ReferenceType) {
+	c.nextIndent("case ")
 	c.putTag(f.Tag)
 	c.putString(":")
 }
 
-func (c *marshallerImpl) putMarshalFuncSwitchDefault(t *sch.CompositeType) {
-	switch t.Kind {
-	case sch.EnumKind:
-		c.putLine("case 0:")
-	case sch.UnionKind:
-		c.putLine("case nil:")
-	default:
-		panic("")
-	}
+func (c *marshallerImpl) putUnmarshalFieldOneSwitchEnd(t *sch.CompositeType) {
+	c.nextIndent("case 0:")
 	{
-		c.pushIndent()
-		c.putMarshalTag(nil, true)
-		c.putMarshalEmpty()
-		c.popIndent()
+		c.putUnmarshalEmpty()
 	}
-	c.putLine("default:")
+	c.putUnmarshalFieldSwitchDefault(t)
+	c.popIndent("}")
+	c.putUnmarshalEmpty()
+	c.putLine("return v, nil")
+}
+
+func (c *marshallerImpl) putMarshalFieldManySwitchBegin(t *sch.CompositeType) {
+	c.pushIndent("if v == nil {")
 	{
-		c.pushIndent()
-		c.putLine("return enc.ErrUnknownTag")
-		c.popIndent()
+		c.putLine("goto end")
 	}
 }
-func (c *marshallerImpl) putUnmarshalFuncSwitchDefault(t *sch.CompositeType) {
-	c.putLine("case 0:")
+
+func (c *marshallerImpl) putMarshalFieldManySwitchCase(f *sch.ReferenceType, i int) {
+	c.popIndent("}")
+	c.pushIndent("if set, del := v.Set[")
+	c.putUint(uint64(i >> 3))
+	c.putString("]&0x")
+	c.putHexUint(1 << uint(i&0x7))
+	c.putString(" != 0, v.Del[")
+	c.putUint(uint64(i >> 3))
+	c.putString("]&0x")
+	c.putHexUint(1 << uint(i&0x7))
+	c.putString(" != 0; set || del {")
 	{
-		c.pushIndent()
-		c.putUnmarshalEmpty()
-		c.popIndent()
+		c.putMarshalTag(f)
+		c.putLine("d.SetFlags(set, del)")
 	}
-	c.putLine("default:")
+}
+
+func (c *marshallerImpl) putMarshalFieldManySwitchEnd(t *sch.CompositeType) {
+	c.popIndent("}")
+	c.nextIndent("end:")
+	c.pushIndent("if b := d.End(); b != nil {")
 	{
-		c.pushIndent()
+		c.putLine("b.EncodeUvarint(0)")
+	}
+	c.popIndent("}")
+	c.putMarshalEmpty()
+	c.putLine("return nil")
+}
+
+func (c *marshallerImpl) putUnmarshalFieldManySwitchBegin(t *sch.CompositeType) {
+	c.putLine("v := &")
+	c.putCompoundName(t.Ref)
+	c.putString("{}")
+	c.pushIndent("for d.Next() {")
+	{
+		c.putUnmarshalTag(t)
+		c.pushIndent("if t == 0 {")
+		{
+			c.putUnmarshalEmpty()
+			c.putLine("break")
+		}
+		c.popIndent("}")
+		c.putLine("set, del, err := d.GetFlags()")
+		c.putUnmarshalFuncReturnErr(t)
+		c.pushIndent("switch t {")
+	}
+}
+
+func (c *marshallerImpl) putUnmarshalFieldManySwitchCase(f *sch.ReferenceType, i int) {
+	{
+		c.nextIndent("case ")
+		c.putTag(f.Tag)
+		c.putString(":")
+		{
+			c.pushIndent("if del {")
+			{
+				c.putLine("v.Del[")
+				c.putUint(uint64(i >> 3))
+				c.putString("] |= 0x")
+				c.putHexUint(1 << uint(i&0x7))
+			}
+			c.popIndent("}")
+			c.pushIndent("if set {")
+			{
+				c.putLine("v.Set[")
+				c.putUint(uint64(i >> 3))
+				c.putString("] |= 0x")
+				c.putHexUint(1 << uint(i&0x7))
+			}
+			c.popIndent("}")
+		}
+	}
+}
+
+func (c *marshallerImpl) putUnmarshalFieldManySwitchEnd(t *sch.CompositeType) {
+	{
+		c.putUnmarshalFieldSwitchDefault(t)
+		c.popIndent("}")
+	}
+	c.popIndent("}")
+	c.putUnmarshalEmpty()
+	c.putLine("return v, nil")
+}
+
+func (c *marshallerImpl) putUnmarshalFieldSwitchDefault(t *sch.CompositeType) {
+	c.nextIndent("default:")
+	{
 		c.putLine("return ")
-		c.typer.putZero(t)
+		c.putZero(t)
 		c.putString(", enc.ErrUnknownTag")
-		c.popIndent()
 	}
 }
 
 // Utilities
 
-func (c *marshallerImpl) putMarshalTag(f *sch.ReferenceType, constant bool) {
-	c.putLine("d.SetKey().EncodeTag(")
+func (c *marshallerImpl) putMarshalTag(f *sch.ReferenceType) {
+	c.putLine("d.SetKey().EncodeSize(")
 	if f != nil {
 		c.putTag(f.Tag)
 	} else {
 		c.putString("0")
 	}
-	if !constant {
-		c.putString(", set, del)")
-	} else {
-		c.putString(", true, true)")
-	}
+	c.putString(")")
 }
 
-func (c *marshallerImpl) putUnmarshalTag(t *sch.CompositeType, v string, constant bool) {
-	c.putLine(v)
-	if constant {
-		c.putString(", _, _")
-	} else {
-		c.putString(", set, del")
-	}
-	c.putString(", err := d.GetKey().DecodeTag()")
+func (c *marshallerImpl) putUnmarshalTag(t *sch.CompositeType) {
+	c.putLine("t, err := d.GetKey().DecodeSize()")
 	c.putUnmarshalFuncReturnErr(t)
 }
 
@@ -815,55 +740,4 @@ func (c *marshallerImpl) putMarshalEmpty() {
 
 func (c *marshallerImpl) putUnmarshalEmpty() {
 	c.putLine("d.Value()")
-}
-
-func (c *marshallerImpl) putMarshalEnd() {
-	c.putLine("if b := d.End(); b != nil {")
-	{
-		c.pushIndent()
-		c.putLine("b.EncodeUvarint(0)")
-		c.popIndent()
-	}
-	c.putLine("}")
-}
-
-// func (c *marshallerImpl) putUnmarshalEnd() {}
-
-func (c *marshallerImpl) putMarshalIndex(v string) {
-	c.putLine("d.SetKey().EncodeSize(")
-	c.putString(v)
-	c.putString(")")
-}
-
-func (c *marshallerImpl) putUnmarshalIndex(t *sch.ContainerType, v string) {
-	c.putLine(v)
-	c.putString(", err := d.GetKey().DecodeSize()")
-	c.putUnmarshalFuncReturnErr(t)
-}
-
-func (c *marshallerImpl) putMarshalSize(v string) {
-	c.putLine("if b := d.Len(); b != nil {")
-	{
-		c.pushIndent()
-		c.putLine("b.EncodeSize(len(")
-		c.putString(v)
-		c.putString("))")
-		c.popIndent()
-	}
-	c.putLine("}")
-}
-
-func (c *marshallerImpl) putUnmarshalSize(t *sch.ContainerType, v string) {
-	c.putLine(v)
-	c.putString(" := enc.MaxSize")
-	c.putLine("if b := d.Len(); b != nil {")
-	{
-		c.pushIndent()
-		c.putLine("var err error")
-		c.putLine(v)
-		c.putString(", err = b.DecodeSize()")
-		c.putUnmarshalFuncReturnErr(t)
-		c.popIndent()
-	}
-	c.putLine("}")
 }

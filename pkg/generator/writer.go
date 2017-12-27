@@ -55,12 +55,25 @@ func (w *writer) putLine(s string) {
 	w.putString(s)
 }
 
-func (w *writer) pushIndent() {
+func (w *writer) pushIndent(s string) {
+	w.putLine(s)
 	w.newline = append(w.newline, w.indent...)
 }
 
-func (w *writer) popIndent() {
+func (w *writer) pushIndentCont(s string) {
+	w.putString(s)
+	w.newline = append(w.newline, w.indent...)
+}
+
+func (w *writer) nextIndent(s string) {
 	w.newline = w.newline[:len(w.newline)-len(w.indent)]
+	w.putLine(s)
+	w.newline = append(w.newline, w.indent...)
+}
+
+func (w *writer) popIndent(s string) {
+	w.newline = w.newline[:len(w.newline)-len(w.indent)]
+	w.putLine(s)
 }
 
 func (w *writer) putTag(t sch.Tag) {

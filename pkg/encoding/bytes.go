@@ -490,9 +490,9 @@ func (b *Bytes) DecodeSize() (int, error) {
 	return int(v), nil
 }
 
-// EncodeTag ...
-func (b *Bytes) EncodeTag(v int, set, del bool) {
-	u := uint64(v) << 2
+// EncodeSetDel ...
+func (b *Bytes) EncodeSetDel(set, del bool) {
+	var u uint64
 	if set {
 		u |= 1
 	}
@@ -502,14 +502,14 @@ func (b *Bytes) EncodeTag(v int, set, del bool) {
 	b.EncodeUvarint(u)
 }
 
-// DecodeTag ...
-func (b *Bytes) DecodeTag() (tag int, set, del bool, err error) {
+// DecodeSetDel ...
+func (b *Bytes) DecodeSetDel() (set, del bool, err error) {
 	v, err := b.DecodeUvarint()
 	if err != nil {
-		return 0, false, false, err
+		return false, false, err
 	}
-	if v>>33 != 0 {
-		return 0, false, false, ErrExceededSizeLimit
+	if v>>2 != 0 {
+		return false, false, ErrExceededSizeLimit
 	}
-	return int(v >> 2), v&1 != 0, v&2 != 0, nil
+	return v&1 != 0, v&2 != 0, nil
 }

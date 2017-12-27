@@ -10,7 +10,7 @@ type declarator interface {
 
 type declaratorImpl struct {
 	*writer
-	typer typer
+	typer
 }
 
 func (c *declaratorImpl) putSchema(s *sch.Schema) {
@@ -31,7 +31,7 @@ func (c *declaratorImpl) putType(r *sch.ReferenceType) {
 	c.putLine("type ")
 	c.putCompoundName(r)
 	c.putString(" ")
-	c.typer.putTypeDef(r)
+	c.putTypeDef(r)
 	c.putLine("")
 
 	switch t := r.Type.(type) {
@@ -71,8 +71,7 @@ func (c *declaratorImpl) putCompositeType(t *sch.CompositeType) {
 
 func (c *declaratorImpl) putEnumType(t *sch.CompositeType) {
 	// Options
-	c.putLine("const (")
-	c.pushIndent()
+	c.pushIndent("const (")
 	for i, f := range t.Fields {
 		c.putLine("")
 		c.putCompoundName(f)
@@ -81,44 +80,28 @@ func (c *declaratorImpl) putEnumType(t *sch.CompositeType) {
 		c.putString(" = ")
 		c.putUint(uint64(i + 1))
 	}
-	c.popIndent()
-	c.putLine(")")
+	c.popIndent(")")
 	c.putLine("")
 }
 
 func (c *declaratorImpl) putBitfieldType(t *sch.CompositeType) {
-	// Options
-	c.putLine("type ")
-	c.typer.putStructFieldFlagType(t.Ref)
-	c.putString(" uint64")
-	c.putLine("")
-	c.putLine("const (")
-	c.pushIndent()
-	for i, f := range t.Fields {
-		c.putLine("")
-		c.typer.putStructFieldFlag(f)
-		c.putString(" ")
-		c.typer.putStructFieldFlagType(f.Super)
-		c.putString(" = 0x")
-		c.putHexUint(1 << uint(i))
-	}
-	c.popIndent()
-	c.putLine(")")
-	c.putLine("")
+	c.putGetMethod(t, false)
+	c.putSetMethod(t, false)
+	c.putDelMethod(t, false)
 }
 
 func (c *declaratorImpl) putUnionType(t *sch.CompositeType) {
 	// Options
 	for _, f := range t.Fields {
 		c.putLine("type ")
-		c.typer.putUnionOptionTypeRef(f)
+		c.putUnionOptionTypeRef(f)
 		c.putString(" ")
-		c.typer.putUnionOptionTypeDef(f)
+		c.putUnionOptionTypeDef(f)
 	}
 	c.putLine("")
 	for _, f := range t.Fields {
 		c.putLine("func (*")
-		c.typer.putUnionOptionTypeRef(f)
+		c.putUnionOptionTypeRef(f)
 		c.putString(") is")
 		c.putCompoundName(f.Super)
 		c.putString("() {}")
@@ -127,8 +110,9 @@ func (c *declaratorImpl) putUnionType(t *sch.CompositeType) {
 }
 
 func (c *declaratorImpl) putStructType(t *sch.CompositeType) {
-	// Options
-	c.putBitfieldType(t)
+	c.putGetMethod(t, true)
+	c.putSetMethod(t, true)
+	c.putDelMethod(t, true)
 }
 
 func (c *declaratorImpl) putContainerType(t *sch.ContainerType) {
@@ -158,4 +142,83 @@ func (c *declaratorImpl) putSubType(r *sch.ReferenceType) {
 	default:
 		panic("")
 	}
+}
+
+func (c *declaratorImpl) putGetMethod(t *sch.CompositeType, v bool) {
+	for i, f := range t.Fields {
+		c.putLine("func (c ")
+		c.putTypeRef(t.Ref)
+		c.putString(") Get")
+		c.putName(f.Name)
+		c.putString("() ")
+		if v {
+			c.putString("(")
+			c.putSubTypeRef(f)
+			c.putString(", bool) ")
+		} else {
+			c.putString("bool ")
+		}
+		c.putString("{ return ")
+		if v {
+			c.putString("c.")
+			c.putName(f.Name)
+			c.putString(", ")
+		}
+		c.putString("c.Set[")
+		c.putUint(uint64(i >> 3))
+		c.putString("]&0x")
+		c.putHexUint(1 << uint(i&0x7))
+		c.putString(" != 0 }")
+	}
+	c.putLine("")
+}
+
+func (c *declaratorImpl) putSetMethod(t *sch.CompositeType, v bool) {
+	for i, f := range t.Fields {
+		c.putLine("func (c ")
+		c.putTypeRef(t.Ref)
+		c.putString(") Set")
+		c.putName(f.Name)
+		c.putString("(")
+		if v {
+			c.putString("v ")
+			c.putSubTypeRef(f)
+		}
+		c.putString(") { c.Set[")
+		c.putUint(uint64(i >> 3))
+		c.putString("] |= 0x")
+		c.putHexUint(1 << uint(i&0x7))
+		if v {
+			c.putString("; c.")
+			c.putName(f.Name)
+			c.putString(" = v")
+		}
+		c.putString(" }")
+	}
+	c.putLine("")
+}
+
+func (c *declaratorImpl) putDelMethod(t *sch.CompositeType, v bool) {
+	for i, f := range t.Fields {
+		c.putLine("func (c ")
+		c.putTypeRef(t.Ref)
+		c.putString(") Del")
+		c.putName(f.Name)
+		c.putString("() { c.Del[")
+		c.putUint(uint64(i >> 3))
+		c.putString("] |= 0x")
+		c.putHexUint(1 << uint(i&0x7))
+		c.putString("; c.Set[")
+		c.putUint(uint64(i >> 3))
+		c.putString("] &^= 0x")
+		c.putHexUint(1 << uint(i&0x7))
+		if v {
+			c.putString("; c.")
+			c.putName(f.Name)
+			c.putString(" = ")
+			c.putZero(f)
+		}
+		c.putString(" }")
+	}
+	c.putLine("")
 }
