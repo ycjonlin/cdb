@@ -13,8 +13,7 @@ type typer interface {
 	putConvertType(r *sch.ReferenceType, v string)
 	putUnionOptionTypeDef(f *sch.ReferenceType)
 	putUnionOptionTypeRef(f *sch.ReferenceType)
-	putStructFieldFlagType(f *sch.ReferenceType)
-	putStructFieldFlag(f *sch.ReferenceType)
+	putFlagType(t *sch.CompositeType)
 }
 
 type typerImpl struct {
@@ -173,20 +172,18 @@ func (c *typerImpl) putCompositeType(t *sch.CompositeType) {
 
 func (c *typerImpl) putBitfieldType(t *sch.CompositeType) {
 	c.putString("struct{ Del, Set ")
-	c.putStructFieldFlagType(t.Ref)
+	c.putFlagType(t)
 	c.putString(" }")
 }
 
 func (c *typerImpl) putUnionType(t *sch.CompositeType) {
-	c.putString("interface {")
-	c.pushIndent()
+	c.pushIndentCont("interface {")
 	{
 		c.putLine("is")
 		c.putCompoundName(t.Ref)
 		c.putString("()")
 	}
-	c.popIndent()
-	c.putLine("}")
+	c.popIndent("}")
 }
 
 func (c *typerImpl) putUnionOptionTypeDef(f *sch.ReferenceType) {
@@ -203,30 +200,23 @@ func (c *typerImpl) putUnionOptionTypeRef(r *sch.ReferenceType) {
 	c.putName(r.Name)
 }
 
-func (c *typerImpl) putStructFieldFlagType(r *sch.ReferenceType) {
-	c.putCompoundName(r)
-	c.putString("_Flags")
-}
-
-func (c *typerImpl) putStructFieldFlag(f *sch.ReferenceType) {
-	c.putCompoundName(f)
-	c.putString("_Flag")
+func (c *typerImpl) putFlagType(t *sch.CompositeType) {
+	c.putString("[")
+	c.putUint(uint64(len(t.Fields)+7) / 8)
+	c.putString("]byte")
 }
 
 func (c *typerImpl) putStructType(t *sch.CompositeType) {
-	c.putString("struct {")
-	c.pushIndent()
-	c.putLine("Set, Del ")
-	c.putCompoundName(t.Ref)
-	c.putString("_Flags")
+	c.pushIndentCont("struct {")
+	c.putLine("Del, Set ")
+	c.putFlagType(t)
 	for _, f := range t.Fields {
 		c.putLine("")
 		c.putName(f.Name)
 		c.putString(" ")
 		c.putSubTypeRef(f)
 	}
-	c.popIndent()
-	c.putLine("}")
+	c.popIndent("}")
 }
 
 func (c *typerImpl) putContainerType(t *sch.ContainerType) {
