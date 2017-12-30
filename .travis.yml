@@ -1,10 +1,12 @@
 language: go
 
-notifications:
-  email: false
-
 go:
   - 1.9
+
+env:
+  global:
+  - PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
 
 install:
   - go get github.com/golang/lint/golint
@@ -15,9 +17,6 @@ install:
   - go get github.com/onsi/ginkgo/ginkgo
   - go get github.com/mattn/goveralls
 
-before_script:
-  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
-
 script:
   - test -z $(gofmt -s -l $GO_FILES)
   - ginkgo -r --trace ./pkg
@@ -26,3 +25,6 @@ script:
   - gocyclo -over 19 $GO_FILES
   - golint -set_exit_status $(go list ./...)
   - $GOPATH/bin/goveralls -service=travis-ci
+
+notifications:
+  email: false
