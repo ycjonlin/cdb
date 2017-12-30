@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	enc "github.com/ycjonlin/cdb/pkg/encoding"
+	. "github.com/ycjonlin/cdb/test"
 )
 
 var _ = Describe("Marshalling", func() {
@@ -305,32 +306,74 @@ var _ = Describe("Marshalling", func() {
 					})
 				}
 			})
+			Describe("SelfRef", func() {
+				for _, c := range []struct {
+					n string
+					v *SelfRef
+				}{
+					{"{}", &SelfRef{}},
+					{"{{}}", &SelfRef{&SelfRef{}}},
+					{"{{{}}}", &SelfRef{&SelfRef{&SelfRef{}}}},
+				} {
+					v := c.v
+					vp := &SelfRef{}
+					Run(c.n, func(d enc.Data) (interface{}, error) {
+						return &v, m.Marshal(d, v)
+					}, func(d enc.Data) (interface{}, error) {
+						return &vp, m.Unmarshal(d, vp)
+					})
+				}
+			})
+			Describe("MulRef", func() {
+				for _, c := range []struct {
+					n string
+					v *MutRef1
+				}{
+					{"{}", &MutRef1{}},
+					{"{{}}", &MutRef1{&MutRef2{}}},
+					{"{{{}}}", &MutRef1{&MutRef2{&MutRef1{}}}},
+				} {
+					v := c.v
+					vp := &MutRef1{}
+					Run(c.n, func(d enc.Data) (interface{}, error) {
+						return &v, m.Marshal(d, v)
+					}, func(d enc.Data) (interface{}, error) {
+						return &vp, m.Unmarshal(d, vp)
+					})
+				}
+			})
 			Describe("NestedUnion", func() {
 				for _, c := range []struct {
 					n string
 					v NestedUnion
 				}{
 					{"nil", nil},
+					{"{Bool: true}", &NestedUnion_As_Bool{true}},
+					{"{Int: 1}", &NestedUnion_As_Int{1}},
+					{"{Uint: 1}", &NestedUnion_As_Uint{1}},
+					{"{Float: 1}", &NestedUnion_As_Float{1}},
+					{"{String: \"1\"}", &NestedUnion_As_String{"1"}},
+					{"{Bytes: {1}}", &NestedUnion_As_Bytes{[]byte{1}}},
 					{"{Enum: Option1}", &NestedUnion_As_Enum{
-						Enum: Enum_Option1,
+						Enum_Option1,
 					}},
 					{"{Union: {Option1: {1}}}", &NestedUnion_As_Union{
-						Union: &Union_As_Option1{Option1: []byte{1}},
+						&Union_As_Option1{Option1: []byte{1}},
 					}},
 					{"{Bitfield: {Field1, Field2}}", &NestedUnion_As_Bitfield{
-						Bitfield: &Bitfield{0x3},
+						&Bitfield{0x3},
 					}},
 					{"{Struct: {Field1: {1}, Field2: 2}}", &NestedUnion_As_Struct{
-						Struct: &Struct{Field1: []byte{1}, Field2: 2},
+						&Struct{Field1: []byte{1}, Field2: 2},
 					}},
 					{"{Array: {1, 2}", &NestedUnion_As_Array{
-						Array: Array{1, 2},
+						Array{1, 2},
 					}},
 					{"{Map: {1:1, 2:2}", &NestedUnion_As_Map{
-						Map: Map{1: 1, 2: 2},
+						Map{1: 1, 2: 2},
 					}},
 					{"{Set: {1, 2}", &NestedUnion_As_Set{
-						Set: Set{1: struct{}{}, 2: struct{}{}},
+						Set{1: struct{}{}, 2: struct{}{}},
 					}},
 				} {
 					v := c.v
@@ -348,6 +391,12 @@ var _ = Describe("Marshalling", func() {
 					v *NestedStruct
 				}{
 					{"{}", &NestedStruct{}},
+					{"{Bool: true}", &NestedStruct{Bool: true}},
+					{"{Int: 1}", &NestedStruct{Int: 1}},
+					{"{Uint: 1}", &NestedStruct{Uint: 1}},
+					{"{Float: 1}", &NestedStruct{Float: 1}},
+					{"{String: \"1\"}", &NestedStruct{String: "1"}},
+					{"{Bytes: {1}}", &NestedStruct{Bytes: []byte{1}}},
 					{"{Enum: Option1}", &NestedStruct{
 						Enum: Enum_Option1,
 					}},
@@ -369,13 +418,25 @@ var _ = Describe("Marshalling", func() {
 					{"{Set: {1, 2}}", &NestedStruct{
 						Set: Set{1: struct{}{}, 2: struct{}{}},
 					}},
-					{"{Enum: Option1, " +
+					{"{Bool: true, " +
+						"Int: 1, " +
+						"Uint: 1, " +
+						"Float: 1, " +
+						"String: \"1\", " +
+						"Bytes: {1}, " +
+						"Enum: Option1, " +
 						"Bitfield: {Field1, Field2}, " +
 						"Union: {Option1: {1}}, " +
 						"Struct: {Field1: {1}, Field2: 2}, " +
 						"Array: {1, 2}}, " +
 						"Map: {1:1, 2:2}, " +
 						"Set: {1, 2}}", &NestedStruct{
+						Bool:     true,
+						Int:      1,
+						Uint:     1,
+						Float:    1,
+						String:   "1",
+						Bytes:    []byte{1},
 						Enum:     Enum_Option1,
 						Union:    &Union_As_Option1{Option1: []byte{1}},
 						Bitfield: &Bitfield{0x3},
@@ -400,26 +461,32 @@ var _ = Describe("Marshalling", func() {
 					v NestedArray
 				}{
 					{"nil", nil},
+					{"{Bool: {true}}", &NestedArray_As_Bool{[]bool{true}}},
+					{"{Int: {1}}", &NestedArray_As_Int{[]int64{1}}},
+					{"{Uint: {1}}", &NestedArray_As_Uint{[]uint64{1}}},
+					{"{Float: {1}}", &NestedArray_As_Float{[]float64{1}}},
+					{"{String: {\"1\"}}", &NestedArray_As_String{[]string{"1"}}},
+					{"{Bytes: {{1}}}", &NestedArray_As_Bytes{[][]byte{{1}}}},
 					{"{Enum: Option1}", &NestedArray_As_Enum{
-						Enum: []Enum{Enum_Option1},
+						[]Enum{Enum_Option1},
 					}},
 					{"{Union: {Option1: {1}}}", &NestedArray_As_Union{
-						Union: []Union{&Union_As_Option1{Option1: []byte{1}}},
+						[]Union{&Union_As_Option1{Option1: []byte{1}}},
 					}},
 					{"{Bitfield: {Field1, Field2}}", &NestedArray_As_Bitfield{
-						Bitfield: []*Bitfield{{0x3}},
+						[]*Bitfield{{0x3}},
 					}},
 					{"{Struct: {Field1: {1}, Field2: 2}}", &NestedArray_As_Struct{
-						Struct: []*Struct{{Field1: []byte{1}, Field2: 2}},
+						[]*Struct{{Field1: []byte{1}, Field2: 2}},
 					}},
 					{"{Array: {1, 2}", &NestedArray_As_Array{
-						Array: []Array{{1, 2}},
+						[]Array{{1, 2}},
 					}},
 					{"{Map: {1:1, 2:2}", &NestedArray_As_Map{
-						Map: []Map{{1: 1, 2: 2}},
+						[]Map{{1: 1, 2: 2}},
 					}},
 					{"{Set: {1, 2}", &NestedArray_As_Set{
-						Set: []Set{{1: struct{}{}, 2: struct{}{}}},
+						[]Set{{1: struct{}{}, 2: struct{}{}}},
 					}},
 				} {
 					v := c.v
@@ -437,26 +504,32 @@ var _ = Describe("Marshalling", func() {
 					v NestedMap
 				}{
 					{"nil", nil},
+					{"{Bool: {1: true}}", &NestedMap_As_Bool{map[Type]bool{1: true}}},
+					{"{Int: {1: 1}}", &NestedMap_As_Int{map[Type]int64{1: 1}}},
+					{"{Uint: {1: 1}}", &NestedMap_As_Uint{map[Type]uint64{1: 1}}},
+					{"{Float: {1: 1}}", &NestedMap_As_Float{map[Type]float64{1: 1}}},
+					{"{String: {1: \"1\"}}", &NestedMap_As_String{map[Type]string{1: "1"}}},
+					{"{Bytes: {1: {1}}}", &NestedMap_As_Bytes{map[Type][]byte{1: {1}}}},
 					{"{Enum: Option1}", &NestedMap_As_Enum{
-						Enum: map[Type]Enum{0: Enum_Option1},
+						map[Type]Enum{0: Enum_Option1},
 					}},
 					{"{Union: {Option1: {1}}}", &NestedMap_As_Union{
-						Union: map[Type]Union{0: &Union_As_Option1{Option1: []byte{1}}},
+						map[Type]Union{0: &Union_As_Option1{Option1: []byte{1}}},
 					}},
 					{"{Bitfield: {Field1, Field2}}", &NestedMap_As_Bitfield{
-						Bitfield: map[Type]*Bitfield{0: {0x3}},
+						map[Type]*Bitfield{0: {0x3}},
 					}},
 					{"{Struct: {Field1: {1}, Field2: 2}}", &NestedMap_As_Struct{
-						Struct: map[Type]*Struct{0: {Field1: []byte{1}, Field2: 2}},
+						map[Type]*Struct{0: {Field1: []byte{1}, Field2: 2}},
 					}},
 					{"{Array: {1, 2}", &NestedMap_As_Array{
-						Array: map[Type]Array{0: {1, 2}},
+						map[Type]Array{0: {1, 2}},
 					}},
 					{"{Map: {1:1, 2:2}", &NestedMap_As_Map{
-						Map: map[Type]Map{0: {1: 1, 2: 2}},
+						map[Type]Map{0: {1: 1, 2: 2}},
 					}},
 					{"{Set: {1, 2}", &NestedMap_As_Set{
-						Set: map[Type]Set{0: {1: struct{}{}, 2: struct{}{}}},
+						map[Type]Set{0: {1: struct{}{}, 2: struct{}{}}},
 					}},
 				} {
 					v := c.v

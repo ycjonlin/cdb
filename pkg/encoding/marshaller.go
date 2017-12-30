@@ -2,7 +2,6 @@ package encoding
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"reflect"
 
@@ -18,24 +17,20 @@ var (
 
 // Marshaller ...
 type Marshaller struct {
-	*sch.CompositeType
+	types *sch.CompositeType
 }
 
 // NewMarshaller ...
-func NewMarshaller() *Marshaller {
-	return &Marshaller{
-		sch.NewCompositeType(nil, sch.UnionKind, nil),
-	}
-}
-
-// Check ...
-func (m *Marshaller) Check() error {
-	r := sch.NewReferenceType(0, 0, "", m.RType, nil)
-	err := r.SetType(m.CompositeType)
+func NewMarshaller(d sch.UnionDef) *Marshaller {
+	c, err := sch.Compile(d)
 	if err != nil {
-		return nil
+		panic(err)
 	}
-	return check(r, m.RType)
+	err = sch.Check(c)
+	if err != nil {
+		panic(err)
+	}
+	return &Marshaller{c}
 }
 
 // Marshal ...
@@ -45,7 +40,7 @@ func (m *Marshaller) Marshal(d Data, v interface{}) error {
 		rv.Elem().Kind() == reflect.Interface {
 		rv = rv.Elem()
 	}
-	t := m.GetByRType(rv.Type())
+	t := m.types.GetByRType(rv.Type())
 	return marshal(d, rv, t)
 }
 
@@ -57,204 +52,8 @@ func (m *Marshaller) Unmarshal(d Data, v interface{}) error {
 		rv.Elem().Kind() != reflect.Struct {
 		rv = rv.Elem()
 	}
-	t := m.GetByRType(rv.Type())
+	t := m.types.GetByRType(rv.Type())
 	return unmarshal(d, rv, t)
-}
-
-func check(r *sch.ReferenceType, rt reflect.Type) error {
-	switch t := r.Base.(type) {
-	case *sch.PrimitiveType:
-		return checkPrimitiveType(t, rt)
-	case *sch.CompositeType:
-		return checkCompositeType(t, rt)
-	case *sch.ContainerType:
-		return checkContainerType(t, rt)
-	default:
-		return fmt.Errorf("unknown type %v", reflect.TypeOf(t))
-	}
-}
-
-func checkPrimitiveType(t *sch.PrimitiveType, rt reflect.Type) error {
-	switch t {
-	case sch.BoolType:
-		if rt.Kind() != reflect.Bool {
-			return fmt.Errorf("Bool.Kind must be reflect.Bool, but got %v (%v)", rt.Kind(), rt)
-		}
-		return nil
-	case sch.IntType:
-		if rt.Kind() != reflect.Int64 {
-			return fmt.Errorf("Int.Kind must be reflect.Int64, but got %v (%v)", rt.Kind(), rt)
-		}
-		return nil
-	case sch.UintType:
-		if rt.Kind() != reflect.Uint64 {
-			return fmt.Errorf("Uint.Kind must be reflect.Uint64, but got %v (%v)", rt.Kind(), rt)
-		}
-		return nil
-	case sch.FloatType:
-		if rt.Kind() != reflect.Float64 {
-			return fmt.Errorf("Float.Kind must be reflect.Float64, but got %v (%v)", rt.Kind(), rt)
-		}
-		return nil
-	case sch.StringType:
-		if rt.Kind() != reflect.String {
-			return fmt.Errorf("String.Kind must be reflect.String, but got %v (%v)", rt.Kind(), rt)
-		}
-		return nil
-	case sch.BytesType:
-		if rt.Kind() != reflect.Slice {
-			return fmt.Errorf("Bytes.Kind must be reflect.Slice, but got %v (%v)", rt.Kind(), rt)
-		}
-		if rt.Elem().Kind() != reflect.Uint8 {
-			return fmt.Errorf("Bytes.Enum.Kind must be reflect.Uint8, but got %v (%v)", rt.Elem().Kind(), rt.Elem())
-		}
-		return nil
-	default:
-		return fmt.Errorf("unknown primitive type")
-	}
-}
-
-func checkCompositeType(t *sch.CompositeType, rt reflect.Type) error {
-	switch t.Kind {
-	case sch.EnumKind:
-		return checkEnumType(t, rt)
-	case sch.UnionKind:
-		return checkUnionType(t, rt)
-	case sch.BitfieldKind:
-		return checkBitfieldType(t, rt)
-	case sch.StructKind:
-		return checkStructType(t, rt)
-	default:
-		panic("unknown composite type")
-	}
-}
-
-func checkEnumType(t *sch.CompositeType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Int {
-		return fmt.Errorf("Enum.Kind must be reflect.Int, but got %v (%v)", rt.Kind(), rt)
-	}
-	return nil
-}
-
-func checkUnionType(t *sch.CompositeType, rt reflect.Type) error {
-	if rt != nil && rt.Kind() != reflect.Interface {
-		return fmt.Errorf("Union.Kind must be reflect.Interface, but got %v (%v)", rt.Kind(), rt)
-	}
-	for _, f := range t.Fields {
-		rf := f.RType
-		if rt != nil {
-			if !rf.Implements(rt) {
-				return fmt.Errorf("Union_Option must be implement Union, but %v does not implement %v", rf, rt)
-			}
-			if rf.Kind() != reflect.Ptr {
-				return fmt.Errorf("Struct.Kind must be reflect.Ptr, but got %v (%v)", rf.Kind(), rf)
-			}
-			if rf.Elem().Kind() != reflect.Struct {
-				return fmt.Errorf("Union_Option.Kind must be reflect.Struct, but got %v (%v)", rf.Elem().Kind(), rf.Elem())
-			}
-			if rf.Elem().NumField() != 1 {
-				return fmt.Errorf("Struct.Elem.NumField must be 1, but got %d (%v)", rf.Elem().NumField(), rf.Elem())
-			}
-			rf = rf.Elem().Field(0).Type
-		}
-		err := check(f, rf)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func checkBitfieldType(t *sch.CompositeType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Ptr {
-		return fmt.Errorf("Bitfield.Kind must be reflect.Ptr, but got %v (%v)", rt.Kind(), rt)
-	}
-	if rt.Elem().Kind() != reflect.Array {
-		return fmt.Errorf("Bitfield.Elem.Kind must be reflect.Array, but got %v (%v)", rt.Elem().Kind(), rt.Elem())
-	}
-	if rt.Elem().Elem().Kind() != reflect.Uint8 {
-		return fmt.Errorf("Bitfield.Elem.Kind.Elem must be reflect.Uint8, but got %v (%v)", rt.Elem().Elem().Kind(), rt.Elem().Elem())
-	}
-	if rt.Elem().Len() != (len(t.Fields)+7)/8 {
-		return fmt.Errorf("Bitfield.Elem.Len must be (len(Fields)+7)/8 = %d, but got %d (%v)", (len(t.Fields)+7)/8, rt.Elem().Len(), rt.Elem())
-	}
-	return nil
-}
-
-func checkStructType(t *sch.CompositeType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Ptr {
-		return fmt.Errorf("Struct.Kind must be reflect.Ptr, but got %v (%v)", rt.Kind(), rt)
-	}
-	if rt.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("Struct.Elem.Kind must be reflect.Struct, but got %v (%v)", rt.Elem().Kind(), rt.Elem())
-	}
-	if rt.Elem().NumField() != len(t.Fields) {
-		return fmt.Errorf("Struct.Elem.NumField must be len(Fields) = %d, but got %d (%v)", len(t.Fields), rt.Elem().NumField(), rt.Elem())
-	}
-	for _, f := range t.Fields {
-		rf := rt.Elem().Field(f.Index).Type
-		err := check(f, rf)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func checkContainerType(t *sch.ContainerType, rt reflect.Type) error {
-	switch t.Kind {
-	case sch.ArrayKind:
-		return checkArrayType(t, rt)
-	case sch.MapKind:
-		return checkMapType(t, rt)
-	case sch.SetKind:
-		return checkSetType(t, rt)
-	default:
-		panic("unknown composite type")
-	}
-}
-
-func checkArrayType(t *sch.ContainerType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Slice {
-		return fmt.Errorf("Array.Kind must be reflect.Slice, but got %v (%v)", rt.Kind(), rt)
-	}
-	err := check(t.Elem, rt.Elem())
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func checkMapType(t *sch.ContainerType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Map {
-		return fmt.Errorf("Map.Kind must be reflect.Map, but got %v (%v)", rt.Kind(), rt)
-	}
-	err := check(t.Key, rt.Key())
-	if err != nil {
-		return err
-	}
-	err = check(t.Elem, rt.Elem())
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func checkSetType(t *sch.ContainerType, rt reflect.Type) error {
-	if rt.Kind() != reflect.Map {
-		return fmt.Errorf("Set.Kind must be reflect.Map, but got %v (%v)", rt.Kind(), rt)
-	}
-	if rt.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("Set.Elem.Kind must be reflect.Struct, but got %v (%v)", rt.Elem().Kind(), rt.Elem())
-	}
-	if rt.Elem().NumField() != 0 {
-		return fmt.Errorf("Set.Elem.NumField must be 0, but got %d (%v)", rt.Elem().NumField(), rt.Elem())
-	}
-	err := check(t.Key, rt.Key())
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func isZero(rv reflect.Value, r *sch.ReferenceType) bool {
@@ -481,8 +280,7 @@ func marshalEnumType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 	if f == nil {
 		return ErrUnknownTag
 	}
-	tag := int(f.Tag)
-	d.SetKey().EncodeSize(tag)
+	d.SetKey().EncodeSize(f.Tag)
 	d.Value()
 	d.Value()
 	return nil
@@ -499,7 +297,7 @@ func unmarshalEnumType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 		rv.SetInt(0)
 		return nil
 	}
-	f := t.GetByTag(sch.Tag(tag))
+	f := t.GetByTag(tag)
 	if f == nil {
 		return ErrUnknownTag
 	}
@@ -522,8 +320,7 @@ func marshalUnionType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 	if f == nil {
 		return ErrUnknownRType
 	}
-	tag := int(f.Tag)
-	d.SetKey().EncodeSize(tag)
+	d.SetKey().EncodeSize(f.Tag)
 	rf := rv.Elem().Field(0)
 	err := marshal(d, rf, f)
 	if err != nil {
@@ -544,7 +341,7 @@ func unmarshalUnionType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 		rv.Set(reflect.Zero(rv.Type()))
 		return nil
 	}
-	f := t.GetByTag(sch.Tag(tag))
+	f := t.GetByTag(tag)
 	if f == nil {
 		return ErrUnknownTag
 	}
@@ -565,8 +362,7 @@ func marshalBitfieldType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 	for _, f := range t.Fields {
 		i := f.Index
 		if b[i>>3]&(1<<uint(i&7)) != 0 {
-			tag := int(f.Tag)
-			d.SetKey().EncodeSize(tag)
+			d.SetKey().EncodeSize(f.Tag)
 			d.Value()
 		}
 	}
@@ -589,7 +385,7 @@ func unmarshalBitfieldType(d Data, rv reflect.Value, t *sch.CompositeType) error
 			d.Value()
 			break
 		}
-		f := t.GetByTag(sch.Tag(tag))
+		f := t.GetByTag(tag)
 		if f == nil {
 			return ErrUnknownTag
 		}
@@ -633,7 +429,7 @@ func unmarshalStructType(d Data, rv reflect.Value, t *sch.CompositeType) error {
 			d.Value()
 			break
 		}
-		f := t.GetByTag(sch.Tag(tag))
+		f := t.GetByTag(tag)
 		if f == nil {
 			return ErrUnknownTag
 		}
