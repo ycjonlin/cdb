@@ -1,0 +1,92 @@
+1. Bool bool
+2. Int int
+3. Uint uint
+4. Float float
+5. String string
+6. Bytes bytes
+7. Type Int
+
+11. Enum enum{
+  1. Option1
+  2. Option2
+}
+12. Union union{
+  1. Option1 bytes
+  2. Option2 Type
+}
+13. Bitfield bitfield{
+  1. Field1
+  2. Field2
+}
+14. Struct struct{
+  1. Field1 bytes
+  2. Field2 Type
+}
+15. Array array[]Type
+16. Map map[Type]Type
+17. Set set[Type]
+
+21. SelfRef struct { 1. Field SelfRef }
+22. MutRef1 struct { 1. Field MutRef2 }
+23. MutRef2 struct { 1. Field MutRef1 }
+
+31. NestedUnion union{
+  1. Bool bool
+  2. Int int
+  3. Uint uint
+  4. Float float
+  5. String string
+  6. Bytes bytes
+  11. Enum Enum
+  12. Union Union
+  13. Bitfield Bitfield
+  14. Struct Struct
+  15. Array Array
+  16. Map Map
+  17. Set Set
+}
+32. NestedStruct struct{
+  1. Bool bool
+  2. Int int
+  3. Uint uint
+  4. Float float
+  5. String string
+  6. Bytes bytes
+  11. Enum Enum
+  12. Union Union
+  13. Bitfield Bitfield
+  14. Struct Struct
+  15. Array Array
+  16. Map Map
+  17. Set Set
+}
+33. NestedArray union{
+  1. Bool array[]bool
+  2. Int array[]int
+  3. Uint array[]uint
+  4. Float array[]float
+  5. String array[]string
+  6. Bytes array[]bytes
+  11. Enum array[]Enum
+  12. Union array[]Union
+  13. Bitfield array[]Bitfield
+  14. Struct array[]Struct
+  15. Array array[]Array
+  16. Map array[]Map
+  17. Set array[]Set
+}
+34. NestedMap union{
+  1. Bool map[Type]bool
+  2. Int map[Type]int
+  3. Uint map[Type]uint
+  4. Float map[Type]float
+  5. String map[Type]string
+  6. Bytes map[Type]bytes
+  11. Enum map[Type]Enum
+  12. Union map[Type]Union
+  13. Bitfield map[Type]Bitfield
+  14. Struct map[Type]Struct
+  15. Array map[Type]Array
+  16. Map map[Type]Map
+  17. Set map[Type]Set
+}

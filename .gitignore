@@ -1,4 +1,4 @@
 examples/*
-test/*
+test/*.go
 main
 Makefile
