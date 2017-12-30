@@ -7,19 +7,19 @@ go:
   - 1.9
 
 install:
-  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)#
-  - go get github.com/golang/lint/golint#
-  - go get honnef.co/go/tools/cmd/megacheck#
+  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
+  - go get github.com/golang/lint/golint
+  - go get honnef.co/go/tools/cmd/megacheck
   - go get github.com/fzipp/gocyclo
   - go install github.com/onsi/ginkgo
   - go get github.com/onsi/gomega
   - go get github.com/mattn/goveralls
 
 script:
-  - test -z $(gofmt -s -l $GO_FILES)#
-  - ginkgo -r --trace ./pkg#
-  - go vet ./...#
-  - megacheck ./...#
-  - gocyclo -over 19 $GO_FILES#
-  - golint -set_exit_status $(go list ./...)#
-  - $GOPATH/bin/goveralls -service=travis-ci#
+  - test -z $(gofmt -s -l $GO_FILES)
+  - ginkgo -r --trace ./pkg
+  - go vet ./...
+  - megacheck ./...
+  - gocyclo -over 19 $GO_FILES
+  - golint -set_exit_status $(go list ./...)
+  - $GOPATH/bin/goveralls -service=travis-ci
