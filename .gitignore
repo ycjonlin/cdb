@@ -1,4 +1,3 @@
 examples/*
-test/*.go
 main
 Makefile
