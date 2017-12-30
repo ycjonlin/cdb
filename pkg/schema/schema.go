@@ -12,7 +12,6 @@ import (
 
 // Err ...
 var (
-	ErrTODO          = errors.New("TODO")
 	ErrIllegalTag    = errors.New("illegal tag")
 	ErrIllegalName   = errors.New("illegal name")
 	ErrIllegalSymbol = errors.New("illegal symbol")
@@ -103,7 +102,7 @@ func NewSchema(name string) *Schema {
 	return &Schema{
 		Name:  name,
 		Paths: map[string]struct{}{},
-		Types: NewCompositeType(nil, UnionKind),
+		Types: NewCompositeType(nil, UnionKind, nil),
 	}
 }
 
@@ -203,10 +202,10 @@ func (s *Schema) parseCompositeType(r *ReferenceType, n *par.Node) error {
 	switch {
 	case n.Node0.IsKeyword("enum"):
 		kind = EnumKind
-	case n.Node0.IsKeyword("bitfield"):
-		kind = BitfieldKind
 	case n.Node0.IsKeyword("union"):
 		kind = UnionKind
+	case n.Node0.IsKeyword("bitfield"):
+		kind = BitfieldKind
 	case n.Node0.IsKeyword("struct"):
 		kind = StructKind
 	default:
@@ -216,7 +215,7 @@ func (s *Schema) parseCompositeType(r *ReferenceType, n *par.Node) error {
 	if n := n.Node1; !n.IsEmpty() {
 		return n.NewError(ErrExpectEmpty)
 	}
-	c := NewCompositeType(r, kind)
+	c := NewCompositeType(r, kind, nil)
 	return s.parseCompositeTypeBody(c, n.Node0)
 }
 
@@ -244,7 +243,7 @@ func (s *Schema) parseCompositeTypeField(c *CompositeType, n *par.Node) (*Refere
 	if err != nil {
 		return nil, err
 	}
-	f, err := c.Put(tag, name)
+	f, err := c.Put(tag, name, nil)
 	if err != nil {
 		if err == ErrDuplicatedTypeTag {
 			return nil, n.Node0.NewError(err)

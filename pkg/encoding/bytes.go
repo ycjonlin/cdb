@@ -12,9 +12,8 @@ import (
 // Err ...
 var (
 	ErrUnexpectedEOF     = errors.New("unexpected EOF")
-	ErrUnknownTag        = errors.New("unknown tag")
 	ErrExceededSizeLimit = errors.New("exceeded size limit")
-	ErrDataOverflow      = errors.New("data overflow")
+	ErrExceededDataLimit = errors.New("exceeded data limit")
 )
 
 // Bytes ...
@@ -138,7 +137,7 @@ func (b *Bytes) DecodeUvarint() (uint64, error) {
 			l = a[i>>3]
 		}
 		if i == 9 && l != 0x80 {
-			return 0, ErrDataOverflow
+			return 0, ErrExceededDataLimit
 		}
 		if l&(1<<uint((^i)&7)) == 0 {
 			v &= (1<<uint((i<<3)-i+7) - 1)
@@ -205,7 +204,7 @@ func (b *Bytes) DecodeVarint() (int64, error) {
 			l ^= a[i>>3+1] >> 7
 		}
 		if i == 9 && l^a[0]>>7 != 0x41 {
-			return 0, ErrDataOverflow
+			return 0, ErrExceededDataLimit
 		}
 		if l&(1<<uint((^i)&7)) != 0 {
 			if a[0]&0x80 != 0 {
@@ -229,6 +228,84 @@ var c = [128]byte{
 	0xa1, 0xa2, 0xa5, 0xa6, 0xa9, 0xaa, 0xad, 0xae, 0xb1, 0xb2, 0xb5, 0xb6, 0xb9, 0xba, 0xbd, 0xbe,
 	0xc1, 0xc2, 0xc5, 0xc6, 0xc9, 0xca, 0xcd, 0xce, 0xd1, 0xd2, 0xd5, 0xd6, 0xd9, 0xda, 0xdd, 0xde,
 	0xe1, 0xe2, 0xe5, 0xe6, 0xe9, 0xea, 0xed, 0xee, 0xf1, 0xf2, 0xf5, 0xf6, 0xf9, 0xfa, 0xfd, 0xfe,
+}
+
+// EncodeFloat32 ...
+func (b *Bytes) EncodeFloat32(v float32) {
+	n := math.Float32bits(v)
+	if n&(1<<31) == 0 {
+		n = n ^ 1<<31
+	} else {
+		n = ^n
+	}
+	b.EncodeUint32(n)
+}
+
+// DecodeFloat32 ...
+func (b *Bytes) DecodeFloat32() (float32, error) {
+	n, err := b.DecodeUint32()
+	if err != nil {
+		return 0, ErrUnexpectedEOF
+	}
+	if n&(1<<31) != 0 {
+		n = n ^ 1<<31
+	} else {
+		n = ^n
+	}
+	v := math.Float32frombits(n)
+	return v, nil
+}
+
+// EncodeFloat64 ...
+func (b *Bytes) EncodeFloat64(v float64) {
+	n := math.Float64bits(v)
+	if n&(1<<63) == 0 {
+		n = n ^ 1<<63
+	} else {
+		n = ^n
+	}
+	b.EncodeUint64(n)
+}
+
+// DecodeFloat64 ...
+func (b *Bytes) DecodeFloat64() (float64, error) {
+	n, err := b.DecodeUint64()
+	if err != nil {
+		return 0, ErrUnexpectedEOF
+	}
+	if n&(1<<63) != 0 {
+		n = n ^ 1<<63
+	} else {
+		n = ^n
+	}
+	v := math.Float64frombits(n)
+	return v, nil
+}
+
+// EncodeVarfloat ...
+func (b *Bytes) EncodeVarfloat(v float64) {
+	n := math.Float64bits(v)
+	if n&(1<<63) == 0 {
+		n = n ^ 1<<63
+	} else {
+		n = ^n
+	}
+	b.encodeVarfloat(n)
+}
+
+// DecodeVarfloat ...
+func (b *Bytes) DecodeVarfloat() (float64, error) {
+	n, err := b.decodeVarfloat()
+	if err != nil {
+		return 0, ErrUnexpectedEOF
+	}
+	if n&(1<<63) != 0 {
+		n = n ^ 1<<63
+	} else {
+		n = ^n
+	}
+	v := math.Float64frombits(n)
+	return v, nil
 }
 
 func (b *Bytes) encodeVarfloat(v uint64) {
@@ -279,7 +356,7 @@ func (b *Bytes) decodeVarfloat() (uint64, error) {
 			v = v<<7 | uint64(a[i]>>1)
 		} else {
 			if a[i]&0x7f != 0 {
-				return 0, ErrDataOverflow
+				return 0, ErrExceededDataLimit
 			}
 			v = v<<1 | uint64(a[i]>>7)
 			*b = a[i+1:]
@@ -295,62 +372,6 @@ func (b *Bytes) decodeVarfloat() (uint64, error) {
 		}
 	}
 	return 0, ErrUnexpectedEOF
-}
-
-// EncodeFloat32 ...
-func (b *Bytes) EncodeFloat32(v float32) {
-	m := math.Float32bits(v)
-	n := uint64(m) << 32
-	if n&(1<<63) == 0 {
-		n = n ^ 1<<63
-	} else {
-		n = ^n
-	}
-	b.encodeVarfloat(n)
-}
-
-// DecodeFloat32 ...
-func (b *Bytes) DecodeFloat32() (float32, error) {
-	n, err := b.decodeVarfloat()
-	if err != nil {
-		return 0, ErrUnexpectedEOF
-	}
-	if n&(1<<63) != 0 {
-		n = n ^ 1<<63
-	} else {
-		n = ^n
-	}
-	if n<<32 != 0 {
-		return 0, ErrDataOverflow
-	}
-	v := math.Float32frombits(uint32(n >> 32))
-	return v, nil
-}
-
-// EncodeFloat64 ...
-func (b *Bytes) EncodeFloat64(v float64) {
-	n := math.Float64bits(v)
-	if n&(1<<63) == 0 {
-		n = n ^ 1<<63
-	} else {
-		n = ^n
-	}
-	b.encodeVarfloat(n)
-}
-
-// DecodeFloat64 ...
-func (b *Bytes) DecodeFloat64() (float64, error) {
-	n, err := b.decodeVarfloat()
-	if err != nil {
-		return 0, ErrUnexpectedEOF
-	}
-	if n&(1<<63) != 0 {
-		n = n ^ 1<<63
-	} else {
-		n = ^n
-	}
-	v := math.Float64frombits(n)
-	return v, nil
 }
 
 // EncodeSortingBytes ...

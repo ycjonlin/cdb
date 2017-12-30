@@ -2,6 +2,7 @@ package schema
 
 import (
 	"errors"
+	"reflect"
 )
 
 // Err ...
@@ -12,7 +13,11 @@ var (
 	ErrDuplicatedTypeName     = errors.New("duplicated type name")
 	ErrCircularTypeDefinition = errors.New("circular type definition")
 	ErrNonPrimitiveKeyType    = errors.New("non-primitive key type")
+	ErrUnionNotImplemented    = errors.New("union not implemented")
 )
+
+// RType ...
+type RType reflect.Type
 
 // Kind ...
 type Kind int
@@ -20,8 +25,8 @@ type Kind int
 // Kind ...
 const (
 	EnumKind     Kind = 1
-	BitfieldKind Kind = 2
-	UnionKind    Kind = 3
+	UnionKind    Kind = 2
+	BitfieldKind Kind = 3
 	StructKind   Kind = 4
 
 	ArrayKind Kind = 5
@@ -40,7 +45,7 @@ type isType struct{}
 func (isType) doType() {}
 
 // Tag ...
-type Tag uint32
+type Tag int
 
 // Name ...
 type Name string
@@ -49,9 +54,11 @@ type Name string
 type ReferenceType struct {
 	isType
 
-	Tag  Tag
-	Name Name
-	Type Type
+	Index int
+	Tag   Tag
+	Name  Name
+	Type  Type
+	RType RType
 
 	Base  Type
 	Super *ReferenceType
@@ -68,32 +75,35 @@ type PrimitiveType struct {
 type CompositeType struct {
 	isType
 
-	Ref      *ReferenceType
-	IsAtomic bool
-	Kind     Kind
-	Fields   []*ReferenceType
+	Ref   *ReferenceType
+	Kind  Kind
+	RType RType
 
-	tagMap  map[Tag]*ReferenceType
-	nameMap map[Name]*ReferenceType
+	Fields []*ReferenceType
+
+	tagMap   map[Tag]*ReferenceType
+	nameMap  map[Name]*ReferenceType
+	rtypeMap map[RType]*ReferenceType
 }
 
 // ContainerType ...
 type ContainerType struct {
 	isType
 
-	Ref      *ReferenceType
-	IsAtomic bool
-	Kind     Kind
-	Key      *ReferenceType
-	Elem     *ReferenceType
+	Ref  *ReferenceType
+	Kind Kind
+	Key  *ReferenceType
+	Elem *ReferenceType
 }
 
 // NewReferenceType ...
-func NewReferenceType(tag Tag, name Name, super *ReferenceType) *ReferenceType {
+func NewReferenceType(index int, tag Tag, name Name, rtype RType, super *ReferenceType) *ReferenceType {
 	return &ReferenceType{
+		Index: index,
 		Tag:   tag,
 		Name:  name,
 		Super: super,
+		RType: rtype,
 	}
 }
 
@@ -137,13 +147,19 @@ func (p *PrimitiveType) Match(t Type) bool {
 }
 
 // NewCompositeType ...
-func NewCompositeType(r *ReferenceType, kind Kind) *CompositeType {
+func NewCompositeType(r *ReferenceType, kind Kind, v interface{}) *CompositeType {
+	var rtype RType
+	if kind == UnionKind && v != nil {
+		rtype = reflect.TypeOf(v).Elem()
+	}
 	c := &CompositeType{
-		Ref:  r,
-		Kind: kind,
+		Ref:   r,
+		Kind:  kind,
+		RType: rtype,
 
-		tagMap:  map[Tag]*ReferenceType{},
-		nameMap: map[Name]*ReferenceType{},
+		tagMap:   map[Tag]*ReferenceType{},
+		nameMap:  map[Name]*ReferenceType{},
+		rtypeMap: map[RType]*ReferenceType{},
 	}
 	if r != nil {
 		r.SetType(c)
@@ -154,7 +170,7 @@ func NewCompositeType(r *ReferenceType, kind Kind) *CompositeType {
 // Match ...
 func (c *CompositeType) Match(t Type) bool {
 	cp, ok := t.(*CompositeType)
-	if !ok || c.IsAtomic != cp.IsAtomic || c.Kind != cp.Kind || len(c.Fields) != len(cp.Fields) {
+	if !ok || c.Kind != cp.Kind || len(c.Fields) != len(cp.Fields) {
 		return false
 	}
 	for _, f := range c.Fields {
@@ -172,7 +188,7 @@ func (c *CompositeType) Match(t Type) bool {
 }
 
 // Put ...
-func (c *CompositeType) Put(tag Tag, name Name) (*ReferenceType, error) {
+func (c *CompositeType) Put(tag Tag, name Name, v interface{}) (*ReferenceType, error) {
 	if tag == 0 {
 		return nil, ErrZeroTypeTag
 	}
@@ -185,11 +201,45 @@ func (c *CompositeType) Put(tag Tag, name Name) (*ReferenceType, error) {
 	if _, ok := c.nameMap[name]; ok {
 		return nil, ErrDuplicatedTypeName
 	}
-	f := NewReferenceType(tag, name, c.Ref)
+	index := len(c.Fields)
+	rtype := reflect.TypeOf(v)
+	if rtype != nil {
+		// interfaces could only be passed in as their pointers.
+		if rtype.Kind() == reflect.Ptr &&
+			rtype.Elem().Kind() == reflect.Interface {
+			rtype = rtype.Elem()
+		}
+		if c.Kind == UnionKind && c.RType != nil {
+			if !rtype.Implements(c.RType) {
+				return nil, ErrUnionNotImplemented
+			}
+		}
+	}
+	f := NewReferenceType(index, tag, name, rtype, c.Ref)
 	c.Fields = append(c.Fields, f)
 	c.tagMap[tag] = f
 	c.nameMap[name] = f
+	if rtype != nil {
+		c.rtypeMap[rtype] = f
+	}
 	return f, nil
+}
+
+// MustPut ...
+func (c *CompositeType) MustPut(tag Tag, name Name, v interface{}) *ReferenceType {
+	r, err := c.Put(tag, name, v)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// GetByIndex ...
+func (c *CompositeType) GetByIndex(index int) *ReferenceType {
+	if index < 0 || index >= len(c.Fields) {
+		return nil
+	}
+	return c.Fields[index]
 }
 
 // GetByTag ...
@@ -202,13 +252,18 @@ func (c *CompositeType) GetByName(name Name) *ReferenceType {
 	return c.nameMap[name]
 }
 
+// GetByRType ...
+func (c *CompositeType) GetByRType(rtype RType) *ReferenceType {
+	return c.rtypeMap[rtype]
+}
+
 // NewContainerType ...
 func NewContainerType(r *ReferenceType, kind Kind) *ContainerType {
 	c := &ContainerType{
 		Ref:  r,
 		Kind: kind,
-		Key:  NewReferenceType(0, "Key", r),
-		Elem: NewReferenceType(0, "Elem", r),
+		Key:  NewReferenceType(0, 0, "Key", nil, r),
+		Elem: NewReferenceType(0, 0, "Elem", nil, r),
 	}
 	if r != nil {
 		r.SetType(c)
@@ -219,7 +274,7 @@ func NewContainerType(r *ReferenceType, kind Kind) *ContainerType {
 // Match ...
 func (c *ContainerType) Match(t Type) bool {
 	cp, ok := t.(*ContainerType)
-	if !ok || c.IsAtomic != cp.IsAtomic || c.Kind != cp.Kind {
+	if !ok || c.Kind != cp.Kind {
 		return false
 	}
 	if c.Kind == MapKind || c.Kind == SetKind {

@@ -2,12 +2,6 @@ package encoding
 
 import (
 	"bytes"
-	"errors"
-)
-
-// Err ...
-var (
-	ErrTODO = errors.New("TODO")
 )
 
 // Data ...
@@ -16,9 +10,6 @@ type Data interface {
 
 	SetKey() *Bytes
 	GetKey() *Bytes
-
-	SetFlags(set, del bool)
-	GetFlags() (set, del bool, err error)
 
 	Value() *Bytes
 	Len() *Bytes
@@ -45,27 +36,6 @@ func (b *BytesData) SetKey() *Bytes { return (*Bytes)(b) }
 // GetKey ...
 func (b *BytesData) GetKey() *Bytes { return (*Bytes)(b) }
 
-// SetFlags ...
-func (b *BytesData) SetFlags(set, del bool) {
-	var u uint64
-	if set {
-		u |= 0x1
-	}
-	if del {
-		u |= 0x2
-	}
-	(*Bytes)(b).EncodeUvarint(u)
-}
-
-// GetFlags ...
-func (b *BytesData) GetFlags() (set, del bool, err error) {
-	u, err := (*Bytes)(b).DecodeUvarint()
-	if err != nil {
-		return false, false, err
-	}
-	return u&0x1 != 0, u&0x2 != 0, nil
-}
-
 // Value ...
 func (b *BytesData) Value() *Bytes { return (*Bytes)(b) }
 
@@ -82,7 +52,6 @@ func (b *BytesData) Next() bool { return true }
 func (*BytesData) Data(b *Bytes) Data { return (*BytesData)(b) }
 
 type pair struct {
-	set, del   bool
 	key, value Bytes
 }
 
@@ -164,19 +133,6 @@ func (m *MapData) GetKey() *Bytes {
 	return &p.key
 }
 
-// SetFlags ...
-func (m *MapData) SetFlags(set, del bool) {
-	p := m.path[len(m.path)-1]
-	p.set = set
-	p.del = del
-}
-
-// GetFlags ...
-func (m *MapData) GetFlags() (set, del bool, err error) {
-	p := m.path[len(m.path)-1]
-	return p.set, p.del, nil
-}
-
 // Value ...
 func (m *MapData) Value() *Bytes {
 	p := m.path[len(m.path)-1]
@@ -240,19 +196,6 @@ func (t *TreeData) GetKey() *Bytes {
 	n.nodes = n.nodes[1:]
 	t.path = append(t.path, np)
 	return &np.key
-}
-
-// SetFlags ...
-func (t *TreeData) SetFlags(set, del bool) {
-	n := t.path[len(t.path)-1]
-	n.set = set
-	n.del = del
-}
-
-// GetFlags ...
-func (t *TreeData) GetFlags() (set, del bool, err error) {
-	n := t.path[len(t.path)-1]
-	return n.set, n.del, nil
 }
 
 // Value ...

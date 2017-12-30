@@ -52,13 +52,13 @@ func (c *declaratorImpl) putCompositeType(t *sch.CompositeType) {
 	switch t.Kind {
 	case sch.EnumKind:
 		c.putEnumType(t)
-	case sch.BitfieldKind:
-		c.putBitfieldType(t)
 	case sch.UnionKind:
 		c.putUnionType(t)
 		for _, f := range t.Fields {
 			c.putSubType(f)
 		}
+	case sch.BitfieldKind:
+		c.putBitfieldType(t)
 	case sch.StructKind:
 		c.putStructType(t)
 		for _, f := range t.Fields {
@@ -84,12 +84,6 @@ func (c *declaratorImpl) putEnumType(t *sch.CompositeType) {
 	c.putLine("")
 }
 
-func (c *declaratorImpl) putBitfieldType(t *sch.CompositeType) {
-	c.putGetMethod(t, false)
-	c.putSetMethod(t, false)
-	c.putDelMethod(t, false)
-}
-
 func (c *declaratorImpl) putUnionType(t *sch.CompositeType) {
 	// Options
 	for _, f := range t.Fields {
@@ -109,10 +103,13 @@ func (c *declaratorImpl) putUnionType(t *sch.CompositeType) {
 	c.putLine("")
 }
 
+func (c *declaratorImpl) putBitfieldType(t *sch.CompositeType) {
+	c.putGetMethod(t)
+	c.putSetMethod(t)
+	c.putDelMethod(t)
+}
+
 func (c *declaratorImpl) putStructType(t *sch.CompositeType) {
-	c.putGetMethod(t, true)
-	c.putSetMethod(t, true)
-	c.putDelMethod(t, true)
 }
 
 func (c *declaratorImpl) putContainerType(t *sch.ContainerType) {
@@ -138,33 +135,21 @@ func (c *declaratorImpl) putSubType(r *sch.ReferenceType) {
 	case *sch.CompositeType:
 		c.putType(r)
 	case *sch.ContainerType:
+		//c.putType(r)
 		c.putContainerType(t) // skip
 	default:
 		panic("")
 	}
 }
 
-func (c *declaratorImpl) putGetMethod(t *sch.CompositeType, v bool) {
+func (c *declaratorImpl) putGetMethod(t *sch.CompositeType) {
 	for i, f := range t.Fields {
 		c.putLine("func (c ")
 		c.putTypeRef(t.Ref)
 		c.putString(") Get")
 		c.putName(f.Name)
-		c.putString("() ")
-		if v {
-			c.putString("(")
-			c.putSubTypeRef(f)
-			c.putString(", bool) ")
-		} else {
-			c.putString("bool ")
-		}
-		c.putString("{ return ")
-		if v {
-			c.putString("c.")
-			c.putName(f.Name)
-			c.putString(", ")
-		}
-		c.putString("c.Set[")
+		c.putString("() bool { return ")
+		c.putString("c[")
 		c.putUint(uint64(i >> 3))
 		c.putString("]&0x")
 		c.putHexUint(1 << uint(i&0x7))
@@ -173,51 +158,31 @@ func (c *declaratorImpl) putGetMethod(t *sch.CompositeType, v bool) {
 	c.putLine("")
 }
 
-func (c *declaratorImpl) putSetMethod(t *sch.CompositeType, v bool) {
+func (c *declaratorImpl) putSetMethod(t *sch.CompositeType) {
 	for i, f := range t.Fields {
 		c.putLine("func (c ")
 		c.putTypeRef(t.Ref)
 		c.putString(") Set")
 		c.putName(f.Name)
-		c.putString("(")
-		if v {
-			c.putString("v ")
-			c.putSubTypeRef(f)
-		}
-		c.putString(") { c.Set[")
+		c.putString("() { c[")
 		c.putUint(uint64(i >> 3))
 		c.putString("] |= 0x")
 		c.putHexUint(1 << uint(i&0x7))
-		if v {
-			c.putString("; c.")
-			c.putName(f.Name)
-			c.putString(" = v")
-		}
 		c.putString(" }")
 	}
 	c.putLine("")
 }
 
-func (c *declaratorImpl) putDelMethod(t *sch.CompositeType, v bool) {
+func (c *declaratorImpl) putDelMethod(t *sch.CompositeType) {
 	for i, f := range t.Fields {
 		c.putLine("func (c ")
 		c.putTypeRef(t.Ref)
 		c.putString(") Del")
 		c.putName(f.Name)
-		c.putString("() { c.Del[")
-		c.putUint(uint64(i >> 3))
-		c.putString("] |= 0x")
-		c.putHexUint(1 << uint(i&0x7))
-		c.putString("; c.Set[")
+		c.putString("() { c[")
 		c.putUint(uint64(i >> 3))
 		c.putString("] &^= 0x")
 		c.putHexUint(1 << uint(i&0x7))
-		if v {
-			c.putString("; c.")
-			c.putName(f.Name)
-			c.putString(" = ")
-			c.putZero(f)
-		}
 		c.putString(" }")
 	}
 	c.putLine("")
