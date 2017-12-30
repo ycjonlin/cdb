@@ -4,6 +4,19 @@ import (
 	sch "github.com/ycjonlin/cdb/pkg/schema"
 )
 
+/*
+primitive => void
+composite
+	enum     => bitfield
+	union    => bitfield
+	bitfield => bitfield
+	struct   => bitfield
+container
+	array => set
+	map   => set
+	set   => set
+*/
+
 type typer interface {
 	putZero(t sch.Type)
 	putTypeDef(r *sch.ReferenceType)
@@ -59,9 +72,9 @@ func (c *typerImpl) putCompositeTypeZero(t *sch.CompositeType) {
 	switch t.Kind {
 	case sch.EnumKind:
 		c.putString("0")
-	case sch.BitfieldKind:
-		c.putString("nil")
 	case sch.UnionKind:
+		c.putString("nil")
+	case sch.BitfieldKind:
 		c.putString("nil")
 	case sch.StructKind:
 		c.putString("nil")
@@ -86,29 +99,14 @@ func (c *typerImpl) putTypeDef(r *sch.ReferenceType) {
 }
 
 func (c *typerImpl) putTypeRef(r *sch.ReferenceType) {
-	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
+	if c.isPointer(r) {
 		c.putString("*")
 	}
 	c.putCompoundName(r)
-	/*switch r.Type.(type) {
-	case *sch.ReferenceType:
-		c.putCompoundName(r)
-	case *sch.PrimitiveType:
-		c.putCompoundName(r)
-	case *sch.CompositeType:
-		c.putCompoundName(r)
-	case *sch.ContainerType:
-		//c.putContainerType(t)
-		c.putCompoundName(r)
-	default:
-		panic("")
-	}*/
 }
 
 func (c *typerImpl) putConvertType(r *sch.ReferenceType, v string) {
-	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
+	if c.isPointer(r) {
 		c.putString("(")
 		c.putTypeRef(r)
 		c.putString(")")
@@ -158,22 +156,16 @@ var primitiveTypeName = map[sch.Name]string{
 func (c *typerImpl) putCompositeType(t *sch.CompositeType) {
 	switch t.Kind {
 	case sch.EnumKind:
-		c.putString("uint32")
-	case sch.BitfieldKind:
-		c.putBitfieldType(t)
+		c.putString("int")
 	case sch.UnionKind:
 		c.putUnionType(t)
+	case sch.BitfieldKind:
+		c.putBitfieldType(t)
 	case sch.StructKind:
 		c.putStructType(t)
 	default:
 		panic("")
 	}
-}
-
-func (c *typerImpl) putBitfieldType(t *sch.CompositeType) {
-	c.putString("struct{ Del, Set ")
-	c.putFlagType(t)
-	c.putString(" }")
 }
 
 func (c *typerImpl) putUnionType(t *sch.CompositeType) {
@@ -206,10 +198,12 @@ func (c *typerImpl) putFlagType(t *sch.CompositeType) {
 	c.putString("]byte")
 }
 
+func (c *typerImpl) putBitfieldType(t *sch.CompositeType) {
+	c.putFlagType(t)
+}
+
 func (c *typerImpl) putStructType(t *sch.CompositeType) {
 	c.pushIndentCont("struct {")
-	c.putLine("Del, Set ")
-	c.putFlagType(t)
 	for _, f := range t.Fields {
 		c.putLine("")
 		c.putName(f.Name)
@@ -263,8 +257,7 @@ func (c *typerImpl) putKeyTypeRef(r *sch.ReferenceType) {
 }
 
 func (c *typerImpl) putSubTypeRef(r *sch.ReferenceType) {
-	ct, ok := r.Base.(*sch.CompositeType)
-	if ok && (ct.Kind == sch.StructKind || ct.Kind == sch.BitfieldKind) {
+	if c.isPointer(r) {
 		c.putString("*")
 	}
 	switch t := r.Type.(type) {
@@ -279,4 +272,15 @@ func (c *typerImpl) putSubTypeRef(r *sch.ReferenceType) {
 	default:
 		panic("")
 	}
+}
+
+func (c *typerImpl) isPointer(r *sch.ReferenceType) bool {
+	switch t := r.Base.(type) {
+	case *sch.CompositeType:
+		switch t.Kind {
+		case sch.BitfieldKind, sch.StructKind:
+			return true
+		}
+	}
+	return false
 }

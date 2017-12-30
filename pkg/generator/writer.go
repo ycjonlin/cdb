@@ -65,12 +65,6 @@ func (w *writer) pushIndentCont(s string) {
 	w.newline = append(w.newline, w.indent...)
 }
 
-func (w *writer) nextIndent(s string) {
-	w.newline = w.newline[:len(w.newline)-len(w.indent)]
-	w.putLine(s)
-	w.newline = append(w.newline, w.indent...)
-}
-
 func (w *writer) popIndent(s string) {
 	w.newline = w.newline[:len(w.newline)-len(w.indent)]
 	w.putLine(s)
