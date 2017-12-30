@@ -6,7 +6,7 @@ go:
 env:
   global:
   - PATH=$GOROOT/bin:$GOPATH/bin:$PATH
-  - GO_FILES=$(find . -iname '*.go' -type f | grep -v /vendor/)
+  - GO_FILES=$(find ./pkg -iname '*.go' -type f | grep -v /vendor/)
 
 install:
   - go get github.com/golang/lint/golint
@@ -19,10 +19,10 @@ install:
 
 script:
   - test -z $(gofmt -s -l $GO_FILES)
-  - go vet -composites=false ./...
-  - megacheck ./...
+  - go vet -composites=false ./pkg/...
+  - megacheck ./pkg/...
   - gocyclo -over 19 $GO_FILES
-  - golint -set_exit_status $(go list ./...)
+  - golint -set_exit_status $(go list ./pkg/...)
   - go build main.go
   - ./main test test/test.ps
   - ginkgo -r --trace ./pkg
