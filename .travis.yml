@@ -19,11 +19,13 @@ install:
 
 script:
   - test -z $(gofmt -s -l $GO_FILES)
-  - ginkgo -r --trace ./pkg
-  - go vet ./...
+  - go vet -composites=false ./...
   - megacheck ./...
   - gocyclo -over 19 $GO_FILES
   - golint -set_exit_status $(go list ./...)
+	- go build main.go
+  - ./main test test/test.ps
+  - ginkgo -r --trace ./pkg
   - $GOPATH/bin/goveralls -service=travis-ci
 
 notifications:

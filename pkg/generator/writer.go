@@ -70,11 +70,11 @@ func (w *writer) popIndent(s string) {
 	w.putLine(s)
 }
 
-func (w *writer) putTag(t sch.Tag) {
+func (w *writer) putTag(t int) {
 	w.putUint(uint64(t))
 }
 
-func (w *writer) putName(n sch.Name) {
+func (w *writer) putName(n string) {
 	w.putString(string(n))
 }
 

@@ -27,30 +27,136 @@ func (c *marshallerImpl) putSchema(s *sch.Schema) {
 	c.putLine("")
 	c.pushIndent("var ")
 	c.putString(strings.Title(s.Name))
-	c.putString("Marshaller = func() *enc.Marshaller {")
-	c.putLine("m := enc.NewMarshaller()")
+	c.putString("Marshaller = enc.NewMarshaller(sch.UnionDef{")
 	// Types
 	for _, f := range s.Types.Fields {
-		c.pushIndent("{")
-		c.putLine("r := m.MustPut(")
+		c.putLine("{")
 		c.putTag(f.Tag)
 		c.putString(", \"")
 		c.putName(f.Name)
 		c.putString("\", ")
 		c.putZero(f)
-		c.putString(")")
+		c.putString(", ")
 		c.putType(f)
-		c.popIndent("}")
+		c.putString("},")
 	}
-	c.putLine("err := m.Check()")
-	c.pushIndent("if err != nil {")
-	{
-		c.putLine("panic(err)")
-	}
-	c.popIndent("}")
-	c.putLine("return m")
-	c.popIndent("}()")
+	c.popIndent("})")
 	c.putLine("")
+}
+
+func (c *marshallerImpl) putType(r *sch.ReferenceType) {
+	switch t := r.Type.(type) {
+	case *sch.ReferenceType:
+		c.putReferenceType(r, t)
+	case *sch.PrimitiveType:
+		c.putPrimitiveType(r, t)
+	case *sch.CompositeType:
+		c.putCompositeType(r, t)
+	case *sch.ContainerType:
+		c.putContainerType(r, t)
+	default:
+		panic("")
+	}
+}
+
+func (c *marshallerImpl) putReferenceType(r *sch.ReferenceType, t *sch.ReferenceType) {
+	c.putString("sch.NameRef(\"")
+	c.putName(t.Name)
+	c.putString("\")")
+}
+
+func (c *marshallerImpl) putPrimitiveType(r *sch.ReferenceType, t *sch.PrimitiveType) {
+	c.putString("&sch.BuiltIn{sch.")
+	switch t {
+	case sch.BoolType:
+		c.putString("BoolType}")
+	case sch.IntType:
+		c.putString("IntType}")
+	case sch.UintType:
+		c.putString("UintType}")
+	case sch.FloatType:
+		c.putString("FloatType}")
+	case sch.StringType:
+		c.putString("StringType}")
+	case sch.BytesType:
+		c.putString("BytesType}")
+	default:
+		panic("")
+	}
+}
+
+func (c *marshallerImpl) putCompositeType(r *sch.ReferenceType, t *sch.CompositeType) {
+	switch t.Kind {
+	case sch.EnumKind:
+		c.pushIndentCont("sch.EnumDef{")
+		for _, f := range t.Fields {
+			c.putLine("{")
+			c.putTag(f.Tag)
+			c.putString(", \"")
+			c.putName(f.Name)
+			c.putString("\"},")
+		}
+		c.popIndent("}")
+	case sch.UnionKind:
+		c.pushIndentCont("sch.UnionDef{")
+		for _, f := range t.Fields {
+			c.putLine("{")
+			c.putTag(f.Tag)
+			c.putString(", \"")
+			c.putName(f.Name)
+			c.putString("\", new(")
+			c.putUnionOptionTypeRef(f)
+			c.putString("), ")
+			c.putType(f)
+			c.putString("},")
+		}
+		c.popIndent("}")
+	case sch.BitfieldKind:
+		c.pushIndentCont("sch.BitfieldDef{")
+		for _, f := range t.Fields {
+			c.putLine("{")
+			c.putTag(f.Tag)
+			c.putString(", \"")
+			c.putName(f.Name)
+			c.putString("\"},")
+		}
+		c.popIndent("}")
+	case sch.StructKind:
+		c.pushIndentCont("sch.StructDef{")
+		for _, f := range t.Fields {
+			c.putLine("{")
+			c.putTag(f.Tag)
+			c.putString(", \"")
+			c.putName(f.Name)
+			c.putString("\", nil, ")
+			c.putType(f)
+			c.putString("},")
+		}
+		c.popIndent("}")
+	default:
+		panic("")
+	}
+}
+
+func (c *marshallerImpl) putContainerType(r *sch.ReferenceType, t *sch.ContainerType) {
+	switch t.Kind {
+	case sch.ArrayKind:
+		c.putString("&sch.ArrayDef{")
+		c.putType(t.Elem)
+		c.putString("}")
+	case sch.MapKind:
+		c.putString("&sch.MapDef{")
+		c.putType(t.Key)
+		c.putString(", ")
+		c.putType(t.Elem)
+		c.putString("}")
+	case sch.SetKind:
+		c.putString("&sch.SetDef{")
+		c.putType(t.Key)
+		c.putString("}")
+	default:
+		panic("")
+	}
 }
 
 func (c *marshallerImpl) putZero(r *sch.ReferenceType) {
@@ -128,129 +234,6 @@ func (c *marshallerImpl) putContainerTypeZero(r *sch.ReferenceType, t *sch.Conta
 		c.putString("make(")
 		c.putCompoundName(r)
 		c.putString(")")
-	default:
-		panic("")
-	}
-}
-
-func (c *marshallerImpl) putType(r *sch.ReferenceType) {
-	switch t := r.Type.(type) {
-	case *sch.ReferenceType:
-		c.putReferenceType(r, t)
-	case *sch.PrimitiveType:
-		c.putPrimitiveType(r, t)
-	case *sch.CompositeType:
-		c.putCompositeType(r, t)
-	case *sch.ContainerType:
-		c.putContainerType(r, t)
-	default:
-		panic("")
-	}
-}
-
-func (c *marshallerImpl) putReferenceType(r *sch.ReferenceType, t *sch.ReferenceType) {
-	c.putLine("r.SetType(m.GetByName(\"")
-	c.putName(t.Name)
-	c.putString("\"))")
-}
-
-func (c *marshallerImpl) putPrimitiveType(r *sch.ReferenceType, t *sch.PrimitiveType) {
-	c.putLine("r.SetType(sch.")
-	switch t {
-	case sch.BoolType:
-		c.putString("BoolType)")
-	case sch.IntType:
-		c.putString("IntType)")
-	case sch.UintType:
-		c.putString("UintType)")
-	case sch.FloatType:
-		c.putString("FloatType)")
-	case sch.StringType:
-		c.putString("StringType)")
-	case sch.BytesType:
-		c.putString("BytesType)")
-	default:
-		panic("")
-	}
-}
-
-func (c *marshallerImpl) putCompositeType(r *sch.ReferenceType, t *sch.CompositeType) {
-	switch t.Kind {
-	case sch.EnumKind:
-		c.putLine("c := sch.NewCompositeType(r, sch.EnumKind, nil)")
-		for _, f := range t.Fields {
-			c.putLine("c.MustPut(")
-			c.putTag(f.Tag)
-			c.putString(", \"")
-			c.putName(f.Name)
-			c.putString("\", nil)")
-		}
-	case sch.UnionKind:
-		c.putLine("c := sch.NewCompositeType(r, sch.UnionKind, new(")
-		c.putCompoundName(r)
-		c.putString("))")
-		for _, f := range t.Fields {
-			c.pushIndent("{")
-			c.putLine("r := c.MustPut(")
-			c.putTag(f.Tag)
-			c.putString(", \"")
-			c.putName(f.Name)
-			c.putString("\", new(")
-			c.putUnionOptionTypeRef(f)
-			c.putString("))")
-			c.putType(f)
-			c.popIndent("}")
-		}
-	case sch.BitfieldKind:
-		c.putLine("c := sch.NewCompositeType(r, sch.BitfieldKind, nil)")
-		for _, f := range t.Fields {
-			c.putLine("c.MustPut(")
-			c.putTag(f.Tag)
-			c.putString(", \"")
-			c.putName(f.Name)
-			c.putString("\", nil)")
-		}
-	case sch.StructKind:
-		c.putLine("c := sch.NewCompositeType(r, sch.StructKind, nil)")
-		for _, f := range t.Fields {
-			c.pushIndent("{")
-			c.putLine("r := c.MustPut(")
-			c.putTag(f.Tag)
-			c.putString(", \"")
-			c.putName(f.Name)
-			c.putString("\", nil)")
-			c.putType(f)
-			c.popIndent("}")
-		}
-	default:
-		panic("")
-	}
-}
-
-func (c *marshallerImpl) putContainerType(r *sch.ReferenceType, t *sch.ContainerType) {
-	switch t.Kind {
-	case sch.ArrayKind:
-		c.putLine("c := sch.NewContainerType(r, sch.ArrayKind)")
-		c.pushIndent("{")
-		c.putLine("r := c.Elem")
-		c.putType(t.Elem)
-		c.popIndent("}")
-	case sch.MapKind:
-		c.putLine("c := sch.NewContainerType(r, sch.MapKind)")
-		c.pushIndent("{")
-		c.putLine("r := c.Key")
-		c.putType(t.Key)
-		c.popIndent("}")
-		c.pushIndent("{")
-		c.putLine("r := c.Elem")
-		c.putType(t.Elem)
-		c.popIndent("}")
-	case sch.SetKind:
-		c.putLine("c := sch.NewContainerType(r, sch.SetKind)")
-		c.pushIndent("{")
-		c.putLine("r := c.Key")
-		c.putType(t.Key)
-		c.popIndent("}")
 	default:
 		panic("")
 	}

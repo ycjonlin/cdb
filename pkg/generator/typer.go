@@ -130,7 +130,7 @@ func (c *typerImpl) putReferenceType(t *sch.ReferenceType) {
 	c.putCompoundName(t)
 }
 
-var primitiveTypeName = map[sch.Name]string{
+var primitiveTypeName = map[string]string{
 	"void":      "struct{}",
 	"bool":      "bool",
 	"int":       "int64",

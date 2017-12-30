@@ -70,7 +70,7 @@ var (
 	StringType = NewPrimitiveType("string")
 	BytesType  = NewPrimitiveType("bytes")
 
-	BuiltInTypes = map[Name]Type{
+	BuiltInTypes = map[string]Type{
 		"bool":      BoolType,
 		"int":       IntType,
 		"uint":      UintType,
@@ -88,13 +88,6 @@ type Schema struct {
 	Name  string
 	Paths map[string]struct{}
 	Types *CompositeType
-
-	refs []ref
-}
-
-type ref struct {
-	r *ReferenceType
-	n *par.Node
 }
 
 // NewSchema ...
@@ -131,178 +124,167 @@ func (s *Schema) Parse(path string) error {
 }
 
 func (s *Schema) parseSchema(n *par.Node) error {
-	err := s.parseCompositeTypeBody(s.Types, n)
+	d, err := s.parseFields(n)
 	if err != nil {
 		return err
 	}
-	for _, ref := range s.refs {
-		err = s.parseReferenceType(ref.r, ref.n)
-		if err != nil {
-			return err
-		}
+	t, err := Compile(UnionDef(d))
+	if err != nil {
+		return err
 	}
-	s.refs = nil
+	s.Types = t
 	return nil
 }
 
-func (s *Schema) parseType(r *ReferenceType, n *par.Node) error {
+func (s *Schema) parseType(n *par.Node) (TypeDef, error) {
 	if n.IsNoun() {
-		for _, ref := range s.refs {
-			if r == ref.r {
-				panic("r")
-			}
-			if n == ref.n {
-				panic("n")
-			}
+		t := BuiltInTypes[n.Text]
+		if t != nil {
+			return &BuiltIn{t}, nil
 		}
-		s.refs = append(s.refs, ref{r, n})
-		return nil
+		return NameRef(n.Text), nil
 	}
 	if ok, err := n.IsBracket("{", "}"); ok {
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return s.parseCompositeType(r, n)
+		return s.parseCompositeType(n)
 	}
 	if ok, err := n.IsInnerBracket("[", "]"); ok {
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return s.parseContainerType(r, n)
+		return s.parseContainerType(n)
 	}
-	return n.NewError(ErrIllegalSymbol)
+	return nil, n.NewError(ErrIllegalSymbol)
 }
 
-func (s *Schema) parseReferenceType(r *ReferenceType, n *par.Node) error {
-	name, err := parseName(n)
-	if err != nil {
-		return err
-	}
-	bt := BuiltInTypes[name]
-	if bt != nil {
-		err = r.SetType(bt)
-		if err != nil {
-			return n.NewError(err)
-		}
-		return nil
-	}
-	rt := s.Types.GetByName(name)
-	if rt != nil {
-		err = r.SetType(rt)
-		if err != nil {
-			return n.NewError(err)
-		}
-		return nil
-	}
-	return n.NewError(ErrIllegalName)
-}
-
-func (s *Schema) parseCompositeType(r *ReferenceType, n *par.Node) error {
-	var kind Kind
+func (s *Schema) parseCompositeType(n *par.Node) (TypeDef, error) {
 	switch {
 	case n.Node0.IsKeyword("enum"):
-		kind = EnumKind
+		n = n.Node1
+		d, err := s.parseConsts(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		if n := n.Node1; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		return EnumDef(d), nil
 	case n.Node0.IsKeyword("union"):
-		kind = UnionKind
+		n = n.Node1
+		d, err := s.parseFields(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		if n := n.Node1; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		return UnionDef(d), nil
 	case n.Node0.IsKeyword("bitfield"):
-		kind = BitfieldKind
+		n = n.Node1
+		d, err := s.parseConsts(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		if n := n.Node1; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		return BitfieldDef(d), nil
 	case n.Node0.IsKeyword("struct"):
-		kind = StructKind
+		n = n.Node1
+		d, err := s.parseFields(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		if n := n.Node1; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		return StructDef(d), nil
 	default:
-		return n.Node0.NewError(ErrIllegalName)
+		return nil, n.Node0.NewError(ErrIllegalName)
 	}
-	n = n.Node1
-	if n := n.Node1; !n.IsEmpty() {
-		return n.NewError(ErrExpectEmpty)
-	}
-	c := NewCompositeType(r, kind, nil)
-	return s.parseCompositeTypeBody(c, n.Node0)
 }
 
-func (s *Schema) parseCompositeTypeBody(c *CompositeType, n *par.Node) error {
-	isTyped := c.Kind == UnionKind || c.Kind == StructKind
-	return parseLines(n, func(n *par.Node) error {
-		var np *par.Node
-		if isTyped {
-			np = n.Node1
-			n = n.Node0
-		}
-		f, err := s.parseCompositeTypeField(c, n)
+func (s *Schema) parseConsts(n *par.Node) ([]ConstDef, error) {
+	d := []ConstDef{}
+	err := parseLines(n, func(n *par.Node) error {
+		tag, name, err := s.parseTagAndName(n)
 		if err != nil {
 			return err
 		}
-		if isTyped {
-			return s.parseType(f, np)
-		}
+		d = append(d, ConstDef{tag, name})
 		return nil
 	})
-}
-
-func (s *Schema) parseCompositeTypeField(c *CompositeType, n *par.Node) (*ReferenceType, error) {
-	tag, name, err := s.parseTagAndName(n)
 	if err != nil {
 		return nil, err
 	}
-	f, err := c.Put(tag, name, nil)
-	if err != nil {
-		if err == ErrDuplicatedTypeTag {
-			return nil, n.Node0.NewError(err)
-		}
-		if err == ErrDuplicatedTypeName {
-			return nil, n.Node1.NewError(err)
-		}
-		return nil, n.NewError(err)
-	}
-	return f, nil
+	return d, nil
 }
 
-func (s *Schema) parseContainerType(r *ReferenceType, n *par.Node) error {
-	var kind Kind
+func (s *Schema) parseFields(n *par.Node) ([]FieldDef, error) {
+	d := []FieldDef{}
+	err := parseLines(n, func(n *par.Node) error {
+		tag, name, err := s.parseTagAndName(n.Node0)
+		if err != nil {
+			return err
+		}
+		f, err := s.parseType(n.Node1)
+		if err != nil {
+			return err
+		}
+		d = append(d, FieldDef{tag, name, nil, f})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func (s *Schema) parseContainerType(n *par.Node) (TypeDef, error) {
 	switch {
 	case n.Node0.IsKeyword("array"):
-		kind = ArrayKind
+		n = n.Node1
+		if n := n.Node0; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		e, err := s.parseType(n.Node1)
+		if err != nil {
+			return nil, err
+		}
+		return &ArrayDef{e}, nil
 	case n.Node0.IsKeyword("map"):
-		kind = MapKind
+		n = n.Node1
+		k, err := s.parseType(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		e, err := s.parseType(n.Node1)
+		if err != nil {
+			return nil, err
+		}
+		return &MapDef{k, e}, nil
 	case n.Node0.IsKeyword("set"):
-		kind = SetKind
+		n = n.Node1
+		k, err := s.parseType(n.Node0)
+		if err != nil {
+			return nil, err
+		}
+		if n := n.Node1; !n.IsEmpty() {
+			return nil, n.NewError(ErrExpectEmpty)
+		}
+		return &SetDef{k}, nil
 	default:
-		return n.Node0.NewError(ErrIllegalName)
+		return nil, n.Node0.NewError(ErrIllegalName)
 	}
-	c := NewContainerType(r, kind)
-	return s.parseContainerTypeBody(c, n.Node1)
-}
-
-func (s *Schema) parseContainerTypeBody(c *ContainerType, n *par.Node) error {
-	isKeyed := c.Kind == MapKind || c.Kind == SetKind
-	isTyped := c.Kind == ArrayKind || c.Kind == MapKind
-	if n := n.Node0; isKeyed {
-		err := s.parseType(c.Key, n)
-		if err != nil {
-			return err
-		}
-	} else {
-		if !n.IsEmpty() {
-			return n.NewError(ErrExpectEmpty)
-		}
-	}
-	if n := n.Node1; isTyped {
-		err := s.parseType(c.Elem, n)
-		if err != nil {
-			return err
-		}
-	} else {
-		if !n.IsEmpty() {
-			return n.NewError(ErrExpectEmpty)
-		}
-	}
-	return nil
 }
 
 func parseLines(n *par.Node, callback func(n *par.Node) error) error {
 	return n.Repeat("\n", callback)
 }
 
-func (s *Schema) parseTagAndName(n *par.Node) (Tag, Name, error) {
+func (s *Schema) parseTagAndName(n *par.Node) (int, string, error) {
 	if !n.IsVerb(".") {
 		return 0, "", n.NewError(ErrExpectDot)
 	}
@@ -317,7 +299,7 @@ func (s *Schema) parseTagAndName(n *par.Node) (Tag, Name, error) {
 	return tag, name, nil
 }
 
-func parseTag(n *par.Node) (Tag, error) {
+func parseTag(n *par.Node) (int, error) {
 	if !n.IsNoun() {
 		return 0, n.NewError(ErrIllegalTag)
 	}
@@ -340,12 +322,12 @@ func parseTag(n *par.Node) (Tag, error) {
 	if tag <= 0 {
 		return 0, n.NewError(ErrIllegalTag)
 	}
-	return Tag(tag), nil
+	return int(tag), nil
 }
 
-func parseName(n *par.Node) (Name, error) {
+func parseName(n *par.Node) (string, error) {
 	if !n.IsNoun() {
 		return "", n.NewError(ErrExpectName)
 	}
-	return Name(n.Text), nil
+	return n.Text, nil
 }

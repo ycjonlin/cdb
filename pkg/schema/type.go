@@ -36,27 +36,19 @@ const (
 
 // Type ...
 type Type interface {
-	doType()
-	Match(t Type) bool
+	isType()
 }
 
-type isType struct{}
-
-func (isType) doType() {}
-
-// Tag ...
-type Tag int
-
-// Name ...
-type Name string
+func (*ReferenceType) isType() {}
+func (*PrimitiveType) isType() {}
+func (*CompositeType) isType() {}
+func (*ContainerType) isType() {}
 
 // ReferenceType ...
 type ReferenceType struct {
-	isType
-
 	Index int
-	Tag   Tag
-	Name  Name
+	Tag   int
+	Name  string
 	Type  Type
 	RType RType
 
@@ -66,38 +58,33 @@ type ReferenceType struct {
 
 // PrimitiveType ...
 type PrimitiveType struct {
-	isType
-
-	Name Name
+	Name string
 }
 
 // CompositeType ...
 type CompositeType struct {
-	isType
-
-	Ref   *ReferenceType
-	Kind  Kind
-	RType RType
-
+	Kind   Kind
+	RType  RType
 	Fields []*ReferenceType
 
-	tagMap   map[Tag]*ReferenceType
-	nameMap  map[Name]*ReferenceType
+	Ref *ReferenceType
+
+	tagMap   map[int]*ReferenceType
+	nameMap  map[string]*ReferenceType
 	rtypeMap map[RType]*ReferenceType
 }
 
 // ContainerType ...
 type ContainerType struct {
-	isType
-
-	Ref  *ReferenceType
 	Kind Kind
 	Key  *ReferenceType
 	Elem *ReferenceType
+
+	Ref *ReferenceType
 }
 
 // NewReferenceType ...
-func NewReferenceType(index int, tag Tag, name Name, rtype RType, super *ReferenceType) *ReferenceType {
+func NewReferenceType(index int, tag int, name string, rtype RType, super *ReferenceType) *ReferenceType {
 	return &ReferenceType{
 		Index: index,
 		Tag:   tag,
@@ -121,29 +108,11 @@ func (r *ReferenceType) SetType(typ Type) error {
 	return nil
 }
 
-// Match ...
-func (r *ReferenceType) Match(t Type) bool {
-	rp, ok := t.(*ReferenceType)
-	if !ok || r != rp {
-		return false
-	}
-	return true
-}
-
 // NewPrimitiveType ...
-func NewPrimitiveType(name Name) *PrimitiveType {
+func NewPrimitiveType(name string) *PrimitiveType {
 	return &PrimitiveType{
 		Name: name,
 	}
-}
-
-// Match ...
-func (p *PrimitiveType) Match(t Type) bool {
-	pp, ok := t.(*PrimitiveType)
-	if !ok || p != pp {
-		return false
-	}
-	return true
 }
 
 // NewCompositeType ...
@@ -157,8 +126,8 @@ func NewCompositeType(r *ReferenceType, kind Kind, v interface{}) *CompositeType
 		Kind:  kind,
 		RType: rtype,
 
-		tagMap:   map[Tag]*ReferenceType{},
-		nameMap:  map[Name]*ReferenceType{},
+		tagMap:   map[int]*ReferenceType{},
+		nameMap:  map[string]*ReferenceType{},
 		rtypeMap: map[RType]*ReferenceType{},
 	}
 	if r != nil {
@@ -167,28 +136,8 @@ func NewCompositeType(r *ReferenceType, kind Kind, v interface{}) *CompositeType
 	return c
 }
 
-// Match ...
-func (c *CompositeType) Match(t Type) bool {
-	cp, ok := t.(*CompositeType)
-	if !ok || c.Kind != cp.Kind || len(c.Fields) != len(cp.Fields) {
-		return false
-	}
-	for _, f := range c.Fields {
-		fp := cp.GetByTag(f.Tag)
-		if fp == nil || f.Name != fp.Name {
-			return false
-		}
-		if c.Kind == UnionKind || c.Kind == StructKind {
-			if !f.Type.Match(fp.Type) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // Put ...
-func (c *CompositeType) Put(tag Tag, name Name, v interface{}) (*ReferenceType, error) {
+func (c *CompositeType) Put(tag int, name string, v interface{}) (*ReferenceType, error) {
 	if tag == 0 {
 		return nil, ErrZeroTypeTag
 	}
@@ -225,15 +174,6 @@ func (c *CompositeType) Put(tag Tag, name Name, v interface{}) (*ReferenceType, 
 	return f, nil
 }
 
-// MustPut ...
-func (c *CompositeType) MustPut(tag Tag, name Name, v interface{}) *ReferenceType {
-	r, err := c.Put(tag, name, v)
-	if err != nil {
-		panic(err)
-	}
-	return r
-}
-
 // GetByIndex ...
 func (c *CompositeType) GetByIndex(index int) *ReferenceType {
 	if index < 0 || index >= len(c.Fields) {
@@ -243,12 +183,12 @@ func (c *CompositeType) GetByIndex(index int) *ReferenceType {
 }
 
 // GetByTag ...
-func (c *CompositeType) GetByTag(tag Tag) *ReferenceType {
+func (c *CompositeType) GetByTag(tag int) *ReferenceType {
 	return c.tagMap[tag]
 }
 
 // GetByName ...
-func (c *CompositeType) GetByName(name Name) *ReferenceType {
+func (c *CompositeType) GetByName(name string) *ReferenceType {
 	return c.nameMap[name]
 }
 
@@ -269,23 +209,4 @@ func NewContainerType(r *ReferenceType, kind Kind) *ContainerType {
 		r.SetType(c)
 	}
 	return c
-}
-
-// Match ...
-func (c *ContainerType) Match(t Type) bool {
-	cp, ok := t.(*ContainerType)
-	if !ok || c.Kind != cp.Kind {
-		return false
-	}
-	if c.Kind == MapKind || c.Kind == SetKind {
-		if !c.Key.Type.Match(cp.Key.Type) {
-			return false
-		}
-	}
-	if c.Kind == ArrayKind || c.Kind == MapKind {
-		if !c.Elem.Type.Match(cp.Elem.Type) {
-			return false
-		}
-	}
-	return true
 }
